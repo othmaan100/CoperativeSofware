@@ -12,6 +12,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     steps:
       - name: Check out code
@@ -38,7 +39,19 @@ jobs:
           npm ci
           npm run build
 
-      - name: Upload to server over FTPS
+      # Quick check that GitHub can reach your FTP server at all.
+      # If this step fails, the server/firewall is blocking GitHub, not the upload.
+      - name: Test FTP connection
+        run: |
+          echo "Checking ${{ secrets.FTP_SERVER }} port 21..."
+          timeout 20 bash -c "echo > /dev/tcp/${{ secrets.FTP_SERVER }}/21" \
+            && echo "Port 21 reachable" \
+            || (echo "::error::Cannot reach FTP server on port 21 from GitHub. Ask your host to allow GitHub Actions IPs (or unblock in cPanel > IP Blocker / Imunify360)." && exit 1)
+
+      # Upload attempt 1
+      - name: Upload to server over FTPS (attempt 1)
+        id: ftp1
+        continue-on-error: true
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -46,6 +59,84 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           port: 21
           protocol: ftps
+          security: loose      # accept the host's shared/self-signed FTP certificate
+          timeout: 600000      # 10 minutes instead of the default 30 seconds
+          log-level: standard
+          local-dir: ./
+          server-dir: ./
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            .github/**
+            tests/**
+            .env
+            .env.*
+            !.env.example
+            public/storage
+            public/storage/**
+            public/uploads/**
+            storage/app/public/**
+            storage/app/private/**
+            storage/app/backups/**
+            storage/logs/*.log
+            storage/framework/cache/data/**
+            storage/framework/sessions/*
+            storage/framework/views/*.php
+            phpunit.xml
+
+      # Upload attempt 2 (only runs if attempt 1 failed, e.g. a dropped connection)
+      - name: Upload to server over FTPS (attempt 2)
+        id: ftp2
+        if: steps.ftp1.outcome == 'failure'
+        continue-on-error: true
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: 21
+          protocol: ftps
+          security: loose      # accept the host's shared/self-signed FTP certificate
+          timeout: 600000      # 10 minutes instead of the default 30 seconds
+          log-level: standard
+          local-dir: ./
+          server-dir: ./
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            .github/**
+            tests/**
+            .env
+            .env.*
+            !.env.example
+            public/storage
+            public/storage/**
+            public/uploads/**
+            storage/app/public/**
+            storage/app/private/**
+            storage/app/backups/**
+            storage/logs/*.log
+            storage/framework/cache/data/**
+            storage/framework/sessions/*
+            storage/framework/views/*.php
+            phpunit.xml
+
+
+      # Upload attempt 3
+      - name: Upload to server over FTPS (attempt 3)
+        if: steps.ftp1.outcome == 'failure' && steps.ftp2.outcome == 'failure'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: 21
+          protocol: ftps
+          security: loose      # accept the host's shared/self-signed FTP certificate
+          timeout: 600000      # 10 minutes instead of the default 30 seconds
+          log-level: standard
           local-dir: ./
           server-dir: ./
           exclude: |
