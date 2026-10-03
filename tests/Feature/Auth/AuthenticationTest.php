@@ -1,0 +1,123 @@
+<?php
+
+namespace Tests\Feature\Auth;
+
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Volt\Volt;
+use Tests\TestCase;
+
+class AuthenticationTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_login_screen_can_be_rendered(): void
+    {
+        $response = $this->get('/login');
+
+        $response
+            ->assertOk()
+            ->assertSeeVolt('pages.auth.login');
+    }
+
+    public function test_users_can_authenticate_using_the_login_screen(): void
+    {
+        $user = User::factory()->create();
+
+        $component = Volt::test('pages.auth.login')
+            ->set('form.login', $user->email)
+            ->set('form.password', 'password');
+
+        $component->call('login');
+
+        $component
+            ->assertHasNoErrors()
+            ->assertRedirect(route('dashboard', absolute: false));
+
+        $this->assertAuthenticated();
+    }
+
+    public function test_users_can_not_authenticate_with_invalid_password(): void
+    {
+        $user = User::factory()->create();
+
+        $component = Volt::test('pages.auth.login')
+            ->set('form.login', $user->email)
+            ->set('form.password', 'wrong-password');
+
+        $component->call('login');
+
+        $component
+            ->assertHasErrors()
+            ->assertNoRedirect();
+
+        $this->assertGuest();
+    }
+
+    public function test_members_can_authenticate_using_their_staff_id(): void
+    {
+        $user = User::factory()->create(['password' => bcrypt('password')]);
+        \App\Models\Member::factory()->create([
+            'user_id' => $user->id,
+            'staff_id' => 'FCET-9001',
+        ]);
+
+        $component = Volt::test('pages.auth.login')
+            ->set('form.login', 'FCET-9001')
+            ->set('form.password', 'password');
+
+        $component->call('login');
+
+        $component
+            ->assertHasNoErrors()
+            ->assertRedirect(route('dashboard', absolute: false));
+
+        $this->assertAuthenticated();
+        $this->assertTrue(auth()->id() === $user->id);
+    }
+
+    public function test_login_fails_gracefully_for_an_unknown_staff_id(): void
+    {
+        $component = Volt::test('pages.auth.login')
+            ->set('form.login', 'NOT-A-REAL-STAFF-ID')
+            ->set('form.password', 'password');
+
+        $component->call('login');
+
+        $component
+            ->assertHasErrors()
+            ->assertNoRedirect();
+
+        $this->assertGuest();
+    }
+
+    public function test_navigation_menu_can_be_rendered(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        $response = $this->get('/dashboard');
+
+        $response
+            ->assertOk()
+            ->assertSeeVolt('layout.navigation');
+    }
+
+    public function test_users_can_logout(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        $component = Volt::test('layout.navigation');
+
+        $component->call('logout');
+
+        $component
+            ->assertHasNoErrors()
+            ->assertRedirect('/');
+
+        $this->assertGuest();
+    }
+}
