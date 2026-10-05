@@ -51,13 +51,9 @@ jobs:
         env:
           FTP_SERVER: ${{ secrets.FTP_SERVER }}
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
-          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          LFTP_PASSWORD: ${{ secrets.FTP_PASSWORD }} # lftp reads the password from here (--env-password)
           FULL_UPLOAD: ${{ github.event.inputs.full_upload || 'false' }}
         run: |
-          # Credentials go in ~/.netrc so special characters in the password are safe
-          printf 'machine %s\nlogin %s\npassword %s\n' "$FTP_SERVER" "$FTP_USERNAME" "$FTP_PASSWORD" > ~/.netrc
-          chmod 600 ~/.netrc
-
           # Normal runs: only upload files whose size changed or that are new.
           # Full upload: send everything again.
           if [ "$FULL_UPLOAD" = "true" ]; then MODE=""; else MODE="--only-newer --ignore-time"; fi
@@ -74,7 +70,7 @@ jobs:
             set net:reconnect-interval-base 5;
             set net:reconnect-interval-max 30;
             set xfer:clobber on;
-            open -p 21 ftp://$FTP_SERVER;
+            open --env-password -u '$FTP_USERNAME' -p 21 ftp://$FTP_SERVER;
             mirror --reverse --verbose --parallel=3 $MODE \
               --exclude '^\.git' \
               --exclude '^\.github/' \
@@ -94,5 +90,3 @@ jobs:
               ./ ./ ;
             bye
           "
-
-          rm -f ~/.netrc
