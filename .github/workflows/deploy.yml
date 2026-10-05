@@ -3,7 +3,12 @@ name: Deploy to cPanel (fesco.fcetpotiskum.com.ng)
 on:
   push:
     branches: [main]
-  workflow_dispatch: # lets you run it manually from the Actions tab
+  workflow_dispatch: # run it manually from the Actions tab
+    inputs:
+      full_upload:
+        description: 'Re-upload every file (ignore what is already on the server)'
+        type: boolean
+        default: false
 
 concurrency:
   group: fesco-production-deploy
@@ -39,123 +44,55 @@ jobs:
           npm ci
           npm run build
 
-      # Quick check that GitHub can reach your FTP server at all.
-      # If this step fails, the server/firewall is blocking GitHub, not the upload.
-      - name: Test FTP connection
+      - name: Install lftp
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+
+      - name: Upload to server over FTPS (lftp)
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FULL_UPLOAD: ${{ github.event.inputs.full_upload || 'false' }}
         run: |
-          echo "Checking ${{ secrets.FTP_SERVER }} port 21..."
-          timeout 20 bash -c "echo > /dev/tcp/${{ secrets.FTP_SERVER }}/21" \
-            && echo "Port 21 reachable" \
-            || (echo "::error::Cannot reach FTP server on port 21 from GitHub. Ask your host to allow GitHub Actions IPs (or unblock in cPanel > IP Blocker / Imunify360)." && exit 1)
+          # Credentials go in ~/.netrc so special characters in the password are safe
+          printf 'machine %s\nlogin %s\npassword %s\n' "$FTP_SERVER" "$FTP_USERNAME" "$FTP_PASSWORD" > ~/.netrc
+          chmod 600 ~/.netrc
 
-      # Upload attempt 1
-      - name: Upload to server over FTPS (attempt 1)
-        id: ftp1
-        continue-on-error: true
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: 21
-          protocol: ftps
-          security: loose      # accept the host's shared/self-signed FTP certificate
-          timeout: 600000      # 10 minutes instead of the default 30 seconds
-          log-level: standard
-          local-dir: ./
-          server-dir: ./
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            .github/**
-            tests/**
-            .env
-            .env.*
-            !.env.example
-            public/storage
-            public/storage/**
-            public/uploads/**
-            storage/app/public/**
-            storage/app/private/**
-            storage/app/backups/**
-            storage/logs/*.log
-            storage/framework/cache/data/**
-            storage/framework/sessions/*
-            storage/framework/views/*.php
-            phpunit.xml
+          # Normal runs: only upload files whose size changed or that are new.
+          # Full upload: send everything again.
+          if [ "$FULL_UPLOAD" = "true" ]; then MODE=""; else MODE="--only-newer --ignore-time"; fi
 
-      # Upload attempt 2 (only runs if attempt 1 failed, e.g. a dropped connection)
-      - name: Upload to server over FTPS (attempt 2)
-        id: ftp2
-        if: steps.ftp1.outcome == 'failure'
-        continue-on-error: true
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: 21
-          protocol: ftps
-          security: loose      # accept the host's shared/self-signed FTP certificate
-          timeout: 600000      # 10 minutes instead of the default 30 seconds
-          log-level: standard
-          local-dir: ./
-          server-dir: ./
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            .github/**
-            tests/**
-            .env
-            .env.*
-            !.env.example
-            public/storage
-            public/storage/**
-            public/uploads/**
-            storage/app/public/**
-            storage/app/private/**
-            storage/app/backups/**
-            storage/logs/*.log
-            storage/framework/cache/data/**
-            storage/framework/sessions/*
-            storage/framework/views/*.php
-            phpunit.xml
+          lftp -c "
+            set ftp:ssl-force true;
+            set ftp:ssl-protect-data true;
+            set ftp:ssl-protect-list true;
+            set ssl:verify-certificate no;
+            set ssl:priority 'NORMAL:-VERS-TLS1.3';
+            set ftp:passive-mode true;
+            set net:timeout 60;
+            set net:max-retries 5;
+            set net:reconnect-interval-base 5;
+            set net:reconnect-interval-max 30;
+            set xfer:clobber on;
+            open -p 21 ftp://$FTP_SERVER;
+            mirror --reverse --verbose --parallel=3 $MODE \
+              --exclude '^\.git' \
+              --exclude '^\.github/' \
+              --exclude '^node_modules/' \
+              --exclude '^tests/' \
+              --exclude '^\.env' \
+              --exclude '^phpunit\.xml$' \
+              --exclude '^public/storage' \
+              --exclude '^public/uploads/.' \
+              --exclude '^storage/app/public/.' \
+              --exclude '^storage/app/private/.' \
+              --exclude '^storage/app/backups/.' \
+              --exclude '^storage/logs/.' \
+              --exclude '^storage/framework/cache/data/.' \
+              --exclude '^storage/framework/sessions/.' \
+              --exclude '^storage/framework/views/.' \
+              ./ ./ ;
+            bye
+          "
 
-
-      # Upload attempt 3
-      - name: Upload to server over FTPS (attempt 3)
-        if: steps.ftp1.outcome == 'failure' && steps.ftp2.outcome == 'failure'
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: 21
-          protocol: ftps
-          security: loose      # accept the host's shared/self-signed FTP certificate
-          timeout: 600000      # 10 minutes instead of the default 30 seconds
-          log-level: standard
-          local-dir: ./
-          server-dir: ./
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            .github/**
-            tests/**
-            .env
-            .env.*
-            !.env.example
-            public/storage
-            public/storage/**
-            public/uploads/**
-            storage/app/public/**
-            storage/app/private/**
-            storage/app/backups/**
-            storage/logs/*.log
-            storage/framework/cache/data/**
-            storage/framework/sessions/*
-            storage/framework/views/*.php
-            phpunit.xml
+          rm -f ~/.netrc
