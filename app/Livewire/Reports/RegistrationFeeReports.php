@@ -11,7 +11,9 @@ use Livewire\Component;
 
 class RegistrationFeeReports extends Component
 {
-    public bool $showSplitForm = false;
+    public bool $showSettingsForm = false;
+
+    public string $fee_amount = '';
 
     public string $admin_pct = '';
 
@@ -20,37 +22,57 @@ class RegistrationFeeReports extends Component
         abort_unless(Auth::user()->can('view_registration_fee_reports'), 403);
     }
 
-    public function openSplitForm(): void
+    public function openSettingsForm(): void
     {
         abort_unless(Auth::user()->can('manage_registration_fee_settings'), 403);
 
+        $this->fee_amount = (string) ApplicationFeePayment::currentFee();
         $this->admin_pct = (string) ApplicationFeePayment::currentSplit()['admin_pct'];
-        $this->showSplitForm = true;
+        $this->resetErrorBag();
+        $this->showSettingsForm = true;
     }
 
-    public function closeSplitForm(): void
+    public function closeSettingsForm(): void
     {
-        $this->showSplitForm = false;
+        $this->showSettingsForm = false;
     }
 
-    public function saveSplit(): void
+    public function saveSettings(): void
     {
         abort_unless(Auth::user()->can('manage_registration_fee_settings'), 403);
 
         $validated = $this->validate([
+            'fee_amount' => ['required', 'numeric', 'min:1', 'max:10000000'],
             'admin_pct' => ['required', 'numeric', 'min:0', 'max:100'],
         ]);
 
+        $oldFee = ApplicationFeePayment::currentFee();
+        $oldSplit = ApplicationFeePayment::currentSplit();
+
+        $fee = round((float) $validated['fee_amount'], 2);
         $adminPct = round((float) $validated['admin_pct'], 2);
         $profitPct = round(100 - $adminPct, 2);
 
-        Setting::set('application_fee_admin_pct', $adminPct);
-        Setting::set('application_fee_profit_pct', $profitPct);
+        $changes = [];
 
-        ActivityLog::record('registration_fee.split_changed', "Updated registration fee split to {$adminPct}% admin / {$profitPct}% profit.", null, ['admin_pct' => $adminPct, 'profit_pct' => $profitPct]);
+        if ($fee !== $oldFee) {
+            Setting::set('application_form_fee', $fee);
+            ActivityLog::record('registration_fee.amount_changed', 'Changed the registration fee from ₦'.number_format($oldFee, 2).' to ₦'.number_format($fee, 2).'.', null, ['from' => $oldFee, 'to' => $fee]);
+            $changes[] = 'fee set to ₦'.number_format($fee, 2);
+        }
 
-        session()->flash('status', "Split updated to {$adminPct}% admin / {$profitPct}% profit. Already-recorded payments keep the split that applied when they were paid.");
-        $this->closeSplitForm();
+        if ($adminPct !== (float) $oldSplit['admin_pct']) {
+            Setting::set('application_fee_admin_pct', $adminPct);
+            Setting::set('application_fee_profit_pct', $profitPct);
+            ActivityLog::record('registration_fee.split_changed', "Updated registration fee split to {$adminPct}% admin / {$profitPct}% profit.", null, ['admin_pct' => $adminPct, 'profit_pct' => $profitPct]);
+            $changes[] = "split set to {$adminPct}% admin / {$profitPct}% profit";
+        }
+
+        session()->flash('status', $changes
+            ? ucfirst(implode(' and ', $changes)).'. This applies to new registrations only — fees already paid are unchanged.'
+            : 'No changes made.');
+
+        $this->closeSettingsForm();
     }
 
     protected function successfulPayments()
@@ -103,6 +125,7 @@ class RegistrationFeeReports extends Component
     {
         return view('livewire.reports.registration-fee-reports', [
             'currentSplit' => ApplicationFeePayment::currentSplit(),
+            'currentFee' => ApplicationFeePayment::currentFee(),
             'totals' => $this->totals(),
             'bySource' => $this->bySource(),
             'byMonth' => $this->byMonth(),

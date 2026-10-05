@@ -57,6 +57,73 @@
         </div>
 
         <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <div class="flex flex-wrap justify-between items-center gap-3 mb-3">
+                <div>
+                    <h3 class="font-semibold">All Members' Contributions</h3>
+                    <p class="text-xs text-gray-500">{{ number_format($contributionTotals->members) }} member(s). Reversed transactions are excluded.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <input type="search" wire:model.live.debounce.300ms="contributionSearch" placeholder="Search name, staff ID, IPPIS, department"
+                           class="text-sm border-gray-300 dark:bg-gray-700 dark:border-gray-600 rounded-md shadow-sm w-64">
+                    <button wire:click="exportCsv('member-contributions')" class="text-xs text-emerald-600 hover:underline whitespace-nowrap">Export CSV</button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm whitespace-nowrap">
+                    <thead class="text-xs uppercase text-gray-500">
+                        <tr>
+                            <th class="text-left py-1 pr-3">Staff ID</th>
+                            <th class="text-left py-1 pr-3">Member</th>
+                            <th class="text-left py-1 pr-3">Date Joined</th>
+                            <th class="text-right py-1 pr-3">Monthly</th>
+                            <th class="text-right py-1 pr-3">Opening Bal.</th>
+                            <th class="text-right py-1 pr-3">Total Contributions</th>
+                            <th class="text-right py-1 pr-3">No.</th>
+                            <th class="text-left py-1 pr-3">Last Month</th>
+                            <th class="text-right py-1">Savings Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($memberContributions as $member)
+                            <tr class="border-b last:border-0" wire:key="mc-{{ $member->id }}">
+                                <td class="py-1 pr-3">{{ $member->staff_id }}</td>
+                                <td class="py-1 pr-3">
+                                    {{ $member->full_name }}
+                                    @if ($member->status !== 'active')
+                                        <span class="text-xs text-gray-500">({{ ucfirst($member->status) }})</span>
+                                    @endif
+                                </td>
+                                <td class="py-1 pr-3">{{ $member->membership_date?->format('d M Y') ?? '—' }}</td>
+                                <td class="py-1 pr-3 text-right">₦{{ number_format((float) $member->approved_monthly_contribution, 2) }}</td>
+                                <td class="py-1 pr-3 text-right">₦{{ number_format((float) $member->opening_balance, 2) }}</td>
+                                <td class="py-1 pr-3 text-right">₦{{ number_format((float) $member->total_contributed, 2) }}</td>
+                                <td class="py-1 pr-3 text-right">{{ $member->contribution_count }}</td>
+                                <td class="py-1 pr-3">{{ $member->last_period ? \Illuminate\Support\Carbon::createFromFormat('!Y-m', $member->last_period)->format('M Y') : '—' }}</td>
+                                <td class="py-1 text-right">₦{{ number_format((float) $member->savings_balance, 2) }}</td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="9" class="py-2 text-gray-500">No members found.</td></tr>
+                        @endforelse
+                    </tbody>
+                    @if ($contributionTotals->members > 0)
+                        <tfoot class="font-semibold border-t-2">
+                            <tr>
+                                <td class="py-2 pr-3" colspan="3">Total ({{ number_format($contributionTotals->members) }} members)</td>
+                                <td class="py-2 pr-3 text-right">₦{{ number_format((float) $contributionTotals->monthly, 2) }}</td>
+                                <td class="py-2 pr-3 text-right">₦{{ number_format((float) $contributionTotals->opening, 2) }}</td>
+                                <td class="py-2 pr-3 text-right">₦{{ number_format((float) $contributionTotals->contributed, 2) }}</td>
+                                <td class="py-2 pr-3"></td>
+                                <td class="py-2 pr-3"></td>
+                                <td class="py-2 text-right">₦{{ number_format((float) $contributionTotals->balance, 2) }}</td>
+                            </tr>
+                        </tfoot>
+                    @endif
+                </table>
+            </div>
+            <div class="mt-3">{{ $memberContributions->links() }}</div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
             <div class="flex justify-between items-center mb-3">
                 <h3 class="font-semibold">Contribution Batch History</h3>
                 <button wire:click="exportCsv('batches')" class="text-xs text-emerald-600 hover:underline">Export CSV</button>

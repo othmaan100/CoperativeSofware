@@ -267,7 +267,7 @@ class MemberImportBatch extends Model
 
         ApplicationFeePayment::recordLegacyImport(
             member: $member,
-            amount: (float) Setting::get('application_form_fee', 5000),
+            amount: ApplicationFeePayment::currentFee(),
             recordedBy: $importedBy,
         );
 

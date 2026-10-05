@@ -15,6 +15,55 @@
             <div class="bg-green-100 border border-green-300 text-green-800 rounded-md px-4 py-3 text-sm">{{ session('status') }}</div>
         @endif
 
+        @if ($reversals->isNotEmpty())
+            <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 {{ $reversals->contains('status', \App\Models\LoanRepaymentReversal::STATUS_AWAITING_CHOICE) ? 'ring-2 ring-amber-300' : '' }}">
+                <h3 class="font-semibold">Excess Repayments</h3>
+                <p class="text-xs text-gray-500 mb-3">
+                    When more is deducted than a loan still owes, the extra is reversed off that loan and held here.
+                    You can apply it to another active loan, or have it refunded to your bank account.
+                </p>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="text-left text-xs uppercase text-gray-500">
+                            <tr>
+                                <th class="py-2 pr-3">Date</th>
+                                <th class="py-2 pr-3">From Loan</th>
+                                <th class="py-2 pr-3 text-right">Excess</th>
+                                <th class="py-2 pr-3">Your Choice</th>
+                                <th class="py-2 pr-3">Status</th>
+                                <th class="py-2"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                            @foreach ($reversals as $reversal)
+                                <tr wire:key="reversal-{{ $reversal->id }}">
+                                    <td class="py-2 pr-3">{{ $reversal->created_at->format('d M Y') }}</td>
+                                    <td class="py-2 pr-3">{{ $reversal->loan->loan_no }}</td>
+                                    <td class="py-2 pr-3 text-right font-semibold">₦{{ number_format((float) $reversal->amount, 2) }}</td>
+                                    <td class="py-2 pr-3">{{ $reversal->resolutionLabel() }}</td>
+                                    <td class="py-2 pr-3">
+                                        <span class="{{ match ($reversal->status) {
+                                            'completed' => 'text-green-700',
+                                            'awaiting_choice' => 'text-amber-700 font-semibold',
+                                            default => 'text-gray-600',
+                                        } }}">{{ $reversal->statusLabel() }}</span>
+                                        @if ($reversal->status === 'completed' && $reversal->refund_reference)
+                                            <span class="block text-xs text-gray-500">Ref: {{ $reversal->refund_reference }}</span>
+                                        @endif
+                                    </td>
+                                    <td class="py-2 text-right">
+                                        @if ($reversal->status === 'awaiting_choice')
+                                            <button wire:click="openReversal({{ $reversal->id }})" class="text-emerald-600 text-sm hover:underline">Choose what to do</button>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        @endif
+
         @forelse ($loans as $loan)
             @php
                 $badge = match ($loan->status) {
@@ -53,6 +102,55 @@
                     @endif
                     <a href="{{ route('loans.show', $loan) }}" wire:navigate class="text-emerald-600 text-sm hover:underline">Details &amp; documents</a>
                 </div>
+
+                @if ($loan->repaymentIntents->isNotEmpty())
+                    <div class="mt-4 border-t border-gray-100 dark:border-gray-700 pt-3">
+                        <p class="text-xs font-semibold uppercase text-gray-500 mb-1">Logged Repayments</p>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full text-sm">
+                                <thead class="text-left text-xs text-gray-500">
+                                    <tr>
+                                        <th class="py-1 pr-3 font-normal">Logged</th>
+                                        <th class="py-1 pr-3 font-normal text-right">Amount</th>
+                                        <th class="py-1 pr-3 font-normal">Note</th>
+                                        <th class="py-1 pr-3 font-normal">Receipt</th>
+                                        <th class="py-1 font-normal">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                                    @foreach ($loan->repaymentIntents as $intent)
+                                        <tr wire:key="intent-{{ $intent->id }}">
+                                            <td class="py-1.5 pr-3 whitespace-nowrap">{{ $intent->requested_at->format('d M Y') }}</td>
+                                            <td class="py-1.5 pr-3 text-right whitespace-nowrap">₦{{ number_format((float) $intent->amount, 2) }}</td>
+                                            <td class="py-1.5 pr-3 text-gray-600 dark:text-gray-400">{{ $intent->note ?: '—' }}</td>
+                                            <td class="py-1.5 pr-3">
+                                                @if ($intent->receipt_path)
+                                                    <a href="{{ route('loan-repayment-intents.receipt', $intent) }}" class="text-emerald-600 hover:underline">View</a>
+                                                @else
+                                                    —
+                                                @endif
+                                            </td>
+                                            <td class="py-1.5">
+                                                @if ($intent->status === 'confirmed')
+                                                    <span class="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">Approved</span>
+                                                    <span class="text-xs text-gray-500">{{ $intent->confirmed_at?->format('d M Y') }}</span>
+                                                @elseif ($intent->status === 'declined')
+                                                    <span class="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">Declined</span>
+                                                    <span class="text-xs text-gray-500">{{ $intent->confirmed_at?->format('d M Y') }}</span>
+                                                    @if ($intent->decline_reason)
+                                                        <span class="block text-xs text-red-700">Reason: {{ $intent->decline_reason }}</span>
+                                                    @endif
+                                                @else
+                                                    <span class="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">Awaiting Treasurer</span>
+                                                @endif
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                @endif
 
                 @if ($expandedLoanId === $loan->id)
                     <div class="mt-4 border-t border-gray-100 dark:border-gray-700 pt-4 space-y-4">
@@ -179,6 +277,68 @@
                 <div class="flex justify-end gap-2 mt-6">
                     <x-secondary-button wire:click="closeRepayFromSavings">Cancel</x-secondary-button>
                     <x-primary-button wire:click="submitRepayFromSavings" wire:loading.attr="disabled">Submit Request</x-primary-button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    @if ($activeReversal)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 px-4">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
+                <h3 class="font-semibold text-lg mb-1">Excess of ₦{{ number_format((float) $activeReversal->amount, 2) }}</h3>
+                <p class="text-xs text-gray-500 mb-4">From loan {{ $activeReversal->loan->loan_no }}. The Treasurer will process your choice.</p>
+
+                <div class="space-y-4">
+                    <div class="space-y-2">
+                        <label class="flex items-start gap-2 text-sm {{ $transferLoans->isEmpty() ? 'opacity-50' : '' }}">
+                            <input type="radio" wire:model.live="reversal_action" value="apply_to_loan" @disabled($transferLoans->isEmpty()) class="mt-0.5 text-emerald-600">
+                            <span>
+                                Apply it to another active loan
+                                @if ($transferLoans->isEmpty())
+                                    <span class="block text-xs text-gray-500">You have no other active loan.</span>
+                                @endif
+                            </span>
+                        </label>
+                        <label class="flex items-start gap-2 text-sm">
+                            <input type="radio" wire:model.live="reversal_action" value="refund" class="mt-0.5 text-emerald-600">
+                            <span>Refund it to my bank account</span>
+                        </label>
+                        <x-input-error :messages="$errors->get('reversal_action')" class="mt-1" />
+                    </div>
+
+                    @if ($reversal_action === 'apply_to_loan')
+                        <div>
+                            <x-input-label for="reversal_target_loan_id" value="Loan to apply it to" />
+                            <select id="reversal_target_loan_id" wire:model="reversal_target_loan_id" class="mt-1 block w-full text-sm border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 rounded-md shadow-sm">
+                                <option value="">Select...</option>
+                                @foreach ($transferLoans as $transferLoan)
+                                    <option value="{{ $transferLoan->id }}">{{ $transferLoan->loan_no }} — ₦{{ number_format((float) $transferLoan->outstanding_balance, 2) }} outstanding</option>
+                                @endforeach
+                            </select>
+                            <x-input-error :messages="$errors->get('reversal_target_loan_id')" class="mt-1" />
+                        </div>
+                    @elseif ($reversal_action === 'refund')
+                        <div>
+                            <x-input-label for="refund_bank_name" value="Bank Name" />
+                            <x-text-input id="refund_bank_name" wire:model="refund_bank_name" type="text" class="mt-1 block w-full" />
+                            <x-input-error :messages="$errors->get('refund_bank_name')" class="mt-1" />
+                        </div>
+                        <div>
+                            <x-input-label for="refund_account_number" value="Account Number" />
+                            <x-text-input id="refund_account_number" wire:model="refund_account_number" type="text" class="mt-1 block w-full" />
+                            <x-input-error :messages="$errors->get('refund_account_number')" class="mt-1" />
+                        </div>
+                        <div>
+                            <x-input-label for="refund_account_name" value="Account Name" />
+                            <x-text-input id="refund_account_name" wire:model="refund_account_name" type="text" class="mt-1 block w-full" />
+                            <x-input-error :messages="$errors->get('refund_account_name')" class="mt-1" />
+                        </div>
+                    @endif
+                </div>
+
+                <div class="flex justify-end gap-2 mt-6">
+                    <x-secondary-button wire:click="closeReversal">Cancel</x-secondary-button>
+                    <x-primary-button wire:click="submitReversalChoice" wire:loading.attr="disabled">Submit</x-primary-button>
                 </div>
             </div>
         </div>

@@ -67,7 +67,7 @@ class LoanRepaymentBatchShow extends Component
         DB::transaction(function () use ($matchedRows, $userId, $batch) {
             foreach ($matchedRows as $row) {
                 $loan = Loan::find($row['loan_id']);
-                if (! $loan || ! in_array($loan->status, ['active', 'overdue', 'defaulted'], true)) {
+                if (! $loan || ! in_array($loan->status, LoanRepaymentBatches::POSTABLE_LOAN_STATUSES, true)) {
                     continue;
                 }
 

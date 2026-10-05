@@ -328,7 +328,7 @@ new class extends Component
             @endcanany
 
             @canany(['treasurer_review_loan', 'post_loan_repayment_batch', 'confirm_loan_repayment', 'import_loans', 'chairman_authorize_loan', 'manage_loan_products', 'set_loan_interest_rates', 'manage_loan_limit_multiplier', 'manage_commodity_catalogue', 'manage_commodity_cycles', 'price_commodity_cycle', 'verify_commodity_cycle', 'approve_commodity_cycle', 'authorize_commodity_cycle', 'release_commodity_goods'])
-                <x-sidebar-group label="Loans" :active="request()->routeIs(['treasurer.loans', 'treasurer.loan-repayment-batches.*', 'treasurer.loan-repayment-intents', 'treasurer.savings-loan-repayments', 'treasurer.loan-imports.*', 'chairman.loans', 'admin.loan-products.*', 'commodities.*'])">
+                <x-sidebar-group label="Loans" :active="request()->routeIs(['treasurer.loans', 'treasurer.loan-repayment-batches.*', 'treasurer.loan-repayment-intents', 'treasurer.savings-loan-repayments', 'treasurer.loan-repayment-reversals','treasurer.loan-imports.*', 'chairman.loans', 'admin.loan-products.*', 'commodities.*'])">
                     @can('treasurer_review_loan')
                         <x-sidebar-link :href="route('treasurer.loans')" :active="request()->routeIs('treasurer.loans')" wire:navigate>
                             {{ __('Loan Applications') }}
@@ -347,6 +347,9 @@ new class extends Component
                         </x-sidebar-link>
                         <x-sidebar-link :href="route('treasurer.savings-loan-repayments')" :active="request()->routeIs('treasurer.savings-loan-repayments')" wire:navigate>
                             {{ __('Loan Repayments from Savings') }}
+                        </x-sidebar-link>
+                        <x-sidebar-link :href="route('treasurer.loan-repayment-reversals')" :active="request()->routeIs('treasurer.loan-repayment-reversals')" wire:navigate>
+                            {{ __('Excess Repayment Reversals') }}
                         </x-sidebar-link>
                     @endcan
 

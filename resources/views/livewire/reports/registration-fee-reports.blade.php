@@ -50,11 +50,12 @@
 
         <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 flex flex-wrap items-center justify-between gap-4">
             <div>
-                <h3 class="font-semibold">Current Split (applies to new registrations)</h3>
-                <p class="text-sm text-gray-500 mt-1">{{ $currentSplit['admin_pct'] }}% admin charge + {{ $currentSplit['profit_pct'] }}% profit on every new registration fee. Payments already recorded keep the split that applied when they were paid — the figures above reflect each payment's own split, which is why the overall percentages can differ from this current setting.</p>
+                <h3 class="font-semibold">Current Fee &amp; Split (applies to new registrations)</h3>
+                <p class="text-sm mt-1">Registration fee: <span class="font-semibold">₦{{ number_format($currentFee, 2) }}</span></p>
+                <p class="text-sm text-gray-500 mt-1">{{ $currentSplit['admin_pct'] }}% admin charge + {{ $currentSplit['profit_pct'] }}% profit on every new registration fee. Payments already recorded keep the amount and split that applied when they were paid — the figures above reflect each payment's own split, which is why the overall percentages can differ from this current setting.</p>
             </div>
             @can('manage_registration_fee_settings')
-                <x-secondary-button wire:click="openSplitForm" class="shrink-0">Edit Split</x-secondary-button>
+                <x-secondary-button wire:click="openSettingsForm" class="shrink-0">Edit Fee &amp; Split</x-secondary-button>
             @endcan
         </div>
 
@@ -172,20 +173,26 @@
         </div>
     </div>
 
-    @if ($showSplitForm)
+    @if ($showSettingsForm)
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 px-4">
             <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
-                <h3 class="font-semibold text-lg mb-4">Edit Admin/Profit Split</h3>
-                <p class="text-xs text-gray-500 mb-4">Set the admin charge percentage — the remainder is treated as profit (feeds dividends). This only affects registrations approved from now on.</p>
+                <h3 class="font-semibold text-lg mb-4">Edit Registration Fee &amp; Split</h3>
+                <p class="text-xs text-gray-500 mb-4">These only affect registrations paid from now on. Fees already paid keep their original amount and split.</p>
+                <div class="mb-4">
+                    <x-input-label for="fee_amount" value="Registration Fee (₦)" />
+                    <x-text-input id="fee_amount" wire:model="fee_amount" type="number" step="0.01" min="1" class="mt-1 block w-full" />
+                    <x-input-error :messages="$errors->get('fee_amount')" class="mt-1" />
+                    <p class="text-xs text-gray-500 mt-1">The amount every new applicant pays, online or recorded by the Treasurer.</p>
+                </div>
                 <div>
-                    <x-input-label for="admin_pct" value="Admin Charge (%)" />
+                    <x-input-label for="admin_pct" value="Admin Charge (%) — the rest is profit and feeds dividends" />
                     <x-text-input id="admin_pct" wire:model="admin_pct" type="number" step="0.01" min="0" max="100" class="mt-1 block w-full" />
                     <x-input-error :messages="$errors->get('admin_pct')" class="mt-1" />
                     <p class="text-xs text-gray-500 mt-1">Profit will be set to {{ is_numeric($admin_pct) ? round(100 - (float) $admin_pct, 2) : '—' }}%.</p>
                 </div>
                 <div class="flex justify-end gap-2 mt-6">
-                    <x-secondary-button wire:click="closeSplitForm">Cancel</x-secondary-button>
-                    <x-primary-button wire:click="saveSplit" wire:loading.attr="disabled">Save</x-primary-button>
+                    <x-secondary-button wire:click="closeSettingsForm">Cancel</x-secondary-button>
+                    <x-primary-button wire:click="saveSettings" wire:loading.attr="disabled">Save</x-primary-button>
                 </div>
             </div>
         </div>

@@ -62,6 +62,18 @@ class ApplicationFeePayment extends Model
         return $this->status === self::STATUS_SUCCESS;
     }
 
+    public const DEFAULT_FEE = 5000;
+
+    /**
+     * The registration (application form) fee new applicants pay —
+     * Chairman-editable on the Registration Fee report. Each payment stores
+     * its own amount, so changing this never alters past payments.
+     */
+    public static function currentFee(): float
+    {
+        return (float) Setting::get('application_form_fee', self::DEFAULT_FEE);
+    }
+
     /**
      * The admin-charge/profit split currently configured — Chairman-editable,
      * same concept as the loan module's interest split. Every payment

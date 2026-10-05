@@ -35,13 +35,10 @@ class SavingsLoanRepayments extends Component
         // the member submitted this request, and other transactions may have
         // moved the account since then.
         $account = $repaymentRequest->savingsAccount;
-        $maxRepayable = min(
-            $account->withdrawableBalance(null, $repaymentRequest->id),
-            (float) $repaymentRequest->loan->outstanding_balance,
-        );
 
-        if ((float) $repaymentRequest->amount > $maxRepayable) {
-            session()->flash('error', "This request can no longer be approved as-is: at most ₦".number_format($maxRepayable, 2)." is available now. Ask the member to submit a smaller request.");
+        if ($repaymentRequest->exceedsAvailableSavings()) {
+            $maxRepayable = $repaymentRequest->savingsPosition()->max_approvable;
+            session()->flash('error', 'This request can no longer be approved as-is: at most ₦'.number_format($maxRepayable, 2).' is available now. Decline it and ask the member to submit a smaller request.');
 
             return;
         }

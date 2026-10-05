@@ -54,6 +54,9 @@
                             <td class="px-4 py-3">
                                 @if ($row['matched'])
                                     <span class="text-green-700">Matched</span>
+                                    @if (! empty($row['note']))
+                                        <span class="block text-xs text-amber-700">{{ $row['note'] }}</span>
+                                    @endif
                                 @else
                                     <span class="text-red-700">{{ $row['error'] }}</span>
                                 @endif

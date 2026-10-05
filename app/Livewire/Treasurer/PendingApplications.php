@@ -117,7 +117,7 @@ class PendingApplications extends Component
         if ($isManualOverride) {
             ApplicationFeePayment::recordManual(
                 member: $member,
-                amount: (float) Setting::get('application_form_fee', 5000),
+                amount: ApplicationFeePayment::currentFee(),
                 recordedBy: $user->id,
                 note: $this->fee_override_note,
             );

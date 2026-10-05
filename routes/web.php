@@ -138,6 +138,7 @@ Route::middleware('auth')->group(function () {
     Route::get('treasurer/loan-repayment-batches/{batch}', LoanRepaymentBatchShow::class)->name('treasurer.loan-repayment-batches.show');
     Route::get('treasurer/loan-repayment-intents', LoanRepaymentIntents::class)->name('treasurer.loan-repayment-intents');
     Route::get('treasurer/savings-loan-repayments', \App\Livewire\Treasurer\SavingsLoanRepayments::class)->name('treasurer.savings-loan-repayments');
+    Route::get('treasurer/loan-repayment-reversals', \App\Livewire\Treasurer\LoanRepaymentReversals::class)->name('treasurer.loan-repayment-reversals');
     Route::get('treasurer/loan-imports', LoanImports::class)->name('treasurer.loan-imports.index');
     Route::get('treasurer/loan-imports/{batch}', LoanImportShow::class)->name('treasurer.loan-imports.show');
 

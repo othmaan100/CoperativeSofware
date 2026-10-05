@@ -51,7 +51,7 @@
                         </div>
                     @else
                         <div class="mt-4 bg-red-50 border border-red-200 text-red-800 rounded-md px-4 py-3 text-sm flex flex-wrap items-center justify-between gap-3">
-                            <span>Your application fee (₦{{ number_format((float) \App\Models\Setting::get('application_form_fee', 1000), 2) }}) has not been paid yet. Your application cannot be approved until this is settled.</span>
+                            <span>Your application fee (₦{{ number_format(\App\Models\ApplicationFeePayment::currentFee(), 2) }}) has not been paid yet. Your application cannot be approved until this is settled.</span>
                             <a href="{{ route('my-application.pay-fee') }}" wire:navigate class="inline-flex items-center px-4 py-2 bg-emerald-700 text-white text-sm font-semibold rounded-md hover:bg-emerald-600 shrink-0">
                                 Pay Now
                             </a>

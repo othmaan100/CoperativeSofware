@@ -36,6 +36,12 @@ class LoanRepaymentBatches extends Component
         ];
     }
 
+    /**
+     * Closed loans are accepted because payroll can keep deducting after a
+     * loan is cleared — the whole deduction then becomes an excess reversal.
+     */
+    public const POSTABLE_LOAN_STATUSES = ['active', 'overdue', 'defaulted', 'closed'];
+
     public static function parseRows(string $fullPath): array
     {
         $rows = [];
@@ -70,10 +76,20 @@ class LoanRepaymentBatches extends Component
                 $error = 'No loan found for this Loan No.';
             } elseif ($loan->member_id !== $member->id) {
                 $error = 'Loan No. does not belong to this Staff ID.';
-            } elseif (! in_array($loan->status, ['active', 'overdue', 'defaulted'], true)) {
+            } elseif (! in_array($loan->status, self::POSTABLE_LOAN_STATUSES, true)) {
                 $error = 'Loan is not currently active for repayment.';
             } elseif (! is_numeric($amount) || (float) $amount <= 0) {
                 $error = 'Amount must be a positive number.';
+            }
+
+            $note = null;
+            if ($error === null) {
+                $excess = (float) $amount - (float) $loan->outstanding_balance;
+                if ($loan->status === 'closed') {
+                    $note = 'Loan already fully repaid — the whole amount will be recorded as an excess reversal.';
+                } elseif ($excess > 0) {
+                    $note = 'Exceeds the outstanding ₦'.number_format((float) $loan->outstanding_balance, 2).' — ₦'.number_format($excess, 2).' will be recorded as an excess reversal.';
+                }
             }
 
             $rows[] = [
@@ -85,6 +101,7 @@ class LoanRepaymentBatches extends Component
                 'loan_id' => $loan?->id,
                 'matched' => $error === null,
                 'error' => $error,
+                'note' => $note,
             ];
         }
         fclose($handle);

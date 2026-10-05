@@ -85,7 +85,7 @@ class RegistrationFeeReportsTest extends TestCase
         $treasurer->assignRole('treasurer');
 
         try {
-            Livewire::actingAs($treasurer)->test(RegistrationFeeReports::class)->call('openSplitForm');
+            Livewire::actingAs($treasurer)->test(RegistrationFeeReports::class)->call('openSettingsForm');
             $this->fail('Expected the Treasurer to be blocked from editing the fee split.');
         } catch (\Throwable $e) {
             // Expected.
@@ -96,11 +96,40 @@ class RegistrationFeeReportsTest extends TestCase
 
         Livewire::actingAs($chairman)
             ->test(RegistrationFeeReports::class)
-            ->call('openSplitForm')
+            ->call('openSettingsForm')
             ->set('admin_pct', '30')
-            ->call('saveSplit');
+            ->call('saveSettings');
 
         $this->assertEquals(30, (float) Setting::get('application_fee_admin_pct'));
         $this->assertEquals(70, (float) Setting::get('application_fee_profit_pct'));
+    }
+
+    public function test_chairman_can_change_the_registration_fee_for_new_applicants_only(): void
+    {
+        $chairman = User::factory()->create();
+        $chairman->assignRole('chairman');
+
+        $applicantUser = User::factory()->create();
+        $applicantUser->assignRole('applicant');
+        $applicant = Member::factory()->create(['user_id' => $applicantUser->id, 'status' => 'pending', 'application_fee_paid' => false]);
+        $alreadyPaid = ApplicationFeePayment::recordManual($applicant, 5000, $chairman->id);
+
+        Livewire::actingAs($chairman)
+            ->test(RegistrationFeeReports::class)
+            ->call('openSettingsForm')
+            ->assertSet('fee_amount', '5000')
+            ->set('fee_amount', '0')
+            ->call('saveSettings')
+            ->assertHasErrors('fee_amount')
+            ->set('fee_amount', '7500')
+            ->call('saveSettings')
+            ->assertHasNoErrors()
+            ->assertSee('₦7,500.00');
+
+        $this->assertEquals(7500, ApplicationFeePayment::currentFee());
+        $this->assertEquals(5000, (float) $alreadyPaid->fresh()->amount, 'A fee already paid must keep its original amount.');
+
+        Livewire::actingAs($applicantUser)->test(\App\Livewire\Members\PayApplicationFee::class)
+            ->assertSet('feeAmount', '7500');
     }
 }

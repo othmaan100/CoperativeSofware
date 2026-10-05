@@ -19,7 +19,7 @@ class PayApplicationFee extends Component
     public function mount(): void
     {
         $this->member = Auth::user()->member()->with('applicationFeePayments')->firstOrFail();
-        $this->feeAmount = (string) Setting::get('application_form_fee', 5000);
+        $this->feeAmount = (string) ApplicationFeePayment::currentFee();
     }
 
     public function payNow(PaystackService $paystack): void

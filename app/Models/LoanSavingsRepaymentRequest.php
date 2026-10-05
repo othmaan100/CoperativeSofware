@@ -62,4 +62,29 @@ class LoanSavingsRepaymentRequest extends Model
     {
         return $this->belongsTo(LoanRepaymentTransaction::class);
     }
+
+    /**
+     * The member's savings position right now, for this request: the raw
+     * balance, what can actually be used (balance minus other pending
+     * commitments and still-locked voluntary deposits), the loan's
+     * outstanding balance, and the most this request could be approved for.
+     */
+    public function savingsPosition(): object
+    {
+        $account = $this->savingsAccount;
+        $usable = $account->withdrawableBalance(null, $this->id);
+        $outstanding = (float) $this->loan->outstanding_balance;
+
+        return (object) [
+            'balance' => (float) $account->balance,
+            'usable' => $usable,
+            'outstanding' => $outstanding,
+            'max_approvable' => min($usable, $outstanding),
+        ];
+    }
+
+    public function exceedsAvailableSavings(): bool
+    {
+        return (float) $this->amount > $this->savingsPosition()->max_approvable + 0.001;
+    }
 }

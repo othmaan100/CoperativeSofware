@@ -60,6 +60,237 @@ class CommodityLoanTest extends TestCase
         ]);
     }
 
+    /**
+     * A cycle already through pricing and the approval chain, with one member's
+     * priced request: 2 bags of sugar @ ₦60,000 and 3 cartons of spaghetti @ ₦10,000
+     * (₦150,000 requested), 10% markup, 3-month tenure.
+     */
+    protected function authorizedCycleWithRequest(): array
+    {
+        $secretary = User::factory()->create();
+        $secretary->assignRole('secretary');
+        $storeOfficer = User::factory()->create();
+        $storeOfficer->assignRole('store_officer');
+
+        $cycle = $this->openCycle($secretary);
+        $cycle->update([
+            'status' => CommodityCycle::STATUS_CHAIRMAN_AUTHORIZED,
+            'markup_admin_pct' => 2, 'markup_profit_pct' => 8,
+            'tenure_months' => 3, 'moratorium_months' => 1,
+        ]);
+
+        $member = $this->makeActiveMember(['staff_id' => 'FCET-8101']);
+        $request = CommodityRequest::create([
+            'commodity_cycle_id' => $cycle->id, 'member_id' => $member->id,
+            'commodity_subtotal' => 150000, 'markup_amount' => 15000, 'total_repayable' => 165000, 'monthly_installment' => 55000,
+            'salary_deduction_authorized' => true, 'status' => CommodityRequest::STATUS_PRICED,
+        ]);
+        $sugar = $request->lines()->create(['commodity_item_id' => CommodityItem::where('description', 'BUA Sugar')->value('id'), 'quantity' => 2, 'unit_basis' => 'bag', 'fixed_unit_price' => 60000, 'line_total' => 120000]);
+        $spaghetti = $request->lines()->create(['custom_item_text' => 'Spaghetti', 'quantity' => 3, 'unit_basis' => 'carton', 'fixed_unit_price' => 10000, 'line_total' => 30000]);
+
+        return [$cycle, $request, $storeOfficer, $sugar, $spaghetti];
+    }
+
+    public function test_only_items_in_stock_are_released_and_charged(): void
+    {
+        [$cycle, $request, $storeOfficer, $sugar, $spaghetti] = $this->authorizedCycleWithRequest();
+
+        // Sugar is not on ground; only 2 of the 3 cartons of spaghetti are.
+        Livewire::actingAs($storeOfficer)->test(CycleShow::class, ['cycle' => $cycle])
+            ->call('openRelease', $request->id)
+            ->assertSet("releaseQuantities.{$sugar->id}", '2')
+            ->call('markNotInStock', $sugar->id)
+            ->set("releaseQuantities.{$spaghetti->id}", '2')
+            ->assertSee('₦22,000.00') // 20,000 released + 10% markup, previewed before confirming
+            ->call('confirmRelease')
+            ->assertHasErrors("releaseReasons.{$spaghetti->id}") // a shortfall needs a reason
+            ->set("releaseReasons.{$spaghetti->id}", 'damaged')
+            ->call('confirmRelease')
+            ->assertHasNoErrors();
+
+        $this->assertSame('not_in_stock', $sugar->fresh()->shortfall_reason);
+        $this->assertSame('damaged', $spaghetti->fresh()->shortfall_reason);
+
+        $request->refresh();
+        $this->assertSame('active', $request->status);
+        $this->assertEquals(20000, (float) $request->commodity_subtotal);
+        $this->assertEquals(2000, (float) $request->markup_amount);
+        $this->assertEquals(22000, (float) $request->total_repayable);
+        $this->assertEquals(150000, $request->requestedSubtotal(), 'What was requested is still on record.');
+
+        $this->assertEquals(0, (float) $sugar->fresh()->quantity_released);
+        $this->assertEquals(2, (float) $spaghetti->fresh()->quantity_released);
+        $this->assertEquals(20000, (float) $spaghetti->fresh()->released_line_total);
+
+        $loan = Loan::findOrFail($request->loan_id);
+        $this->assertEquals(20000, (float) $loan->principal_amount);
+        $this->assertEquals(22000, (float) $loan->outstanding_balance);
+        $this->assertEquals(round(22000 / 3, 2), (float) $loan->monthly_installment);
+    }
+
+    public function test_nothing_in_stock_closes_the_request_without_a_loan(): void
+    {
+        [$cycle, $request, $storeOfficer, $sugar, $spaghetti] = $this->authorizedCycleWithRequest();
+
+        Livewire::actingAs($storeOfficer)->test(CycleShow::class, ['cycle' => $cycle])
+            ->call('openRelease', $request->id)
+            ->call('markNotInStock', $sugar->id)
+            ->call('markNotInStock', $spaghetti->id)
+            ->assertSee('Close as Not Supplied')
+            ->call('confirmRelease');
+
+        $request->refresh();
+        $this->assertSame(CommodityRequest::STATUS_NOT_SUPPLIED, $request->status);
+        $this->assertNull($request->loan_id);
+        $this->assertSame(0, Loan::count());
+    }
+
+    public function test_cannot_release_more_than_was_requested(): void
+    {
+        [$cycle, $request, $storeOfficer, $sugar] = $this->authorizedCycleWithRequest();
+
+        Livewire::actingAs($storeOfficer)->test(CycleShow::class, ['cycle' => $cycle])
+            ->call('openRelease', $request->id)
+            ->set("releaseQuantities.{$sugar->id}", '5')
+            ->call('confirmRelease')
+            ->assertHasErrors("releaseQuantities.{$sugar->id}");
+
+        $this->assertSame('priced', $request->fresh()->status);
+        $this->assertSame(0, Loan::count());
+    }
+
+    public function test_member_sees_what_was_released_and_charged(): void
+    {
+        [$cycle, $request, $storeOfficer, $sugar, $spaghetti] = $this->authorizedCycleWithRequest();
+        $request->releaseGoods($storeOfficer->id, [$sugar->id => 0, $spaghetti->id => 3]);
+
+        Livewire::actingAs($request->member->user)->test(RequestCommodity::class)
+            ->assertSee('Not in stock')
+            ->assertSee('of ₦150,000.00 requested')
+            ->assertSee('only charged for what you received');
+    }
+
+    /** A priced cycle (awaiting the Auditor) with price rows, and two members' requests. */
+    protected function pricedCycleWithTwoMembers(): array
+    {
+        $secretary = User::factory()->create();
+        $secretary->assignRole('secretary');
+        $cycle = $this->openCycle($secretary);
+        $cycle->update(['status' => CommodityCycle::STATUS_PRICED, 'markup_admin_pct' => 2, 'markup_profit_pct' => 8, 'tenure_months' => 2, 'moratorium_months' => 0]);
+
+        $sugarId = CommodityItem::where('description', 'BUA Sugar')->value('id');
+        $cycle->prices()->create(['commodity_item_id' => $sugarId, 'unit_price' => 60000, 'set_by' => $secretary->id, 'set_at' => now()]);
+
+        $requests = [];
+        foreach (['FCET-8201' => 3, 'FCET-8202' => 2] as $staffId => $bags) {
+            $member = $this->makeActiveMember(['staff_id' => $staffId]);
+            $request = CommodityRequest::create(['commodity_cycle_id' => $cycle->id, 'member_id' => $member->id, 'salary_deduction_authorized' => true, 'status' => CommodityRequest::STATUS_PRICED]);
+            $request->lines()->create(['commodity_item_id' => $sugarId, 'quantity' => $bags, 'unit_basis' => 'bag', 'fixed_unit_price' => 60000, 'line_total' => $bags * 60000]);
+            $requests[] = $request;
+        }
+        $cycle->recalculateRequestTotals();
+
+        return [$cycle->fresh(), $requests, $cycle->prices()->first()];
+    }
+
+    public function test_auditor_can_correct_a_price_before_verifying(): void
+    {
+        [$cycle, [$first, $second], $price] = $this->pricedCycleWithTwoMembers();
+        $auditor = User::factory()->create();
+        $auditor->assignRole('auditor');
+
+        Livewire::actingAs($auditor)->test(CycleShow::class, ['cycle' => $cycle])
+            ->assertSee('Auditor: Verify Prices')
+            ->assertSet("auditPrices.{$price->id}", '60000')
+            ->set("auditPrices.{$price->id}", '55000')
+            ->call('verify')
+            ->assertHasNoErrors();
+
+        $price->refresh();
+        $this->assertSame('auditor_verified', $cycle->fresh()->status);
+        $this->assertEquals(55000, (float) $price->unit_price);
+        $this->assertEquals(60000, (float) $price->original_unit_price, "The Secretary's price is kept.");
+        $this->assertSame($auditor->id, $price->revised_by);
+
+        // 3 bags @ 55,000 = 165,000 + 10% = 181,500.
+        $this->assertEquals(165000, (float) $first->fresh()->commodity_subtotal);
+        $this->assertEquals(181500, (float) $first->fresh()->total_repayable);
+        $this->assertEquals(55000, (float) $first->lines()->first()->fixed_unit_price);
+    }
+
+    public function test_store_officer_records_stock_and_release_is_capped_at_good_stock(): void
+    {
+        [$cycle, [$first, $second], $price] = $this->pricedCycleWithTwoMembers();
+        $cycle->update(['status' => CommodityCycle::STATUS_AUDITOR_VERIFIED]);
+
+        $storeOfficer = User::factory()->create();
+        $storeOfficer->assignRole('store_officer');
+
+        // 5 bags requested; only 4 in store, of which 1 is damaged → 3 good.
+        Livewire::actingAs($storeOfficer)->test(CycleShow::class, ['cycle' => $cycle])
+            ->assertSee('Store Officer: Verify Stock in Store')
+            ->assertSet("stockGood.{$price->id}", '5')
+            ->set("stockGood.{$price->id}", '3')
+            ->set("stockDamaged.{$price->id}", '1')
+            ->call('approve')
+            ->assertHasNoErrors();
+
+        $price->refresh();
+        $this->assertSame('store_approved', $cycle->fresh()->status);
+        $this->assertEquals(3, (float) $price->quantity_in_store);
+        $this->assertEquals(1, (float) $price->quantity_damaged);
+
+        $cycle->update(['status' => CommodityCycle::STATUS_CHAIRMAN_AUTHORIZED]);
+
+        // First member takes all 3 good bags.
+        Livewire::actingAs($storeOfficer)->test(CycleShow::class, ['cycle' => $cycle->fresh()])
+            ->call('openRelease', $first->id)
+            ->call('confirmRelease')
+            ->assertHasNoErrors();
+        $this->assertEquals(3, (float) $first->lines()->first()->quantity_released);
+
+        // Second member: nothing left — pre-filled to 0 and can't be overridden.
+        $secondLine = $second->lines()->first();
+        Livewire::actingAs($storeOfficer)->test(CycleShow::class, ['cycle' => $cycle->fresh()])
+            ->call('openRelease', $second->id)
+            ->assertSet("releaseQuantities.{$secondLine->id}", '0')
+            ->assertSet("releaseReasons.{$secondLine->id}", 'not_in_stock')
+            ->set("releaseQuantities.{$secondLine->id}", '1')
+            ->call('confirmRelease')
+            ->assertHasErrors("releaseQuantities.{$secondLine->id}")
+            ->set("releaseQuantities.{$secondLine->id}", '0')
+            ->call('confirmRelease')
+            ->assertHasNoErrors();
+
+        $this->assertSame(CommodityRequest::STATUS_NOT_SUPPLIED, $second->fresh()->status);
+        $this->assertEquals(0, $price->fresh()->quantityAvailable());
+    }
+
+    public function test_items_found_damaged_at_release_are_moved_out_of_good_stock(): void
+    {
+        [$cycle, [$first], $price] = $this->pricedCycleWithTwoMembers();
+        $price->update(['quantity_in_store' => 5, 'quantity_damaged' => 0]);
+        $cycle->update(['status' => CommodityCycle::STATUS_CHAIRMAN_AUTHORIZED]);
+        $storeOfficer = User::factory()->create();
+        $storeOfficer->assignRole('store_officer');
+
+        $line = $first->lines()->first();
+
+        // 3 requested, but 1 bag turns out torn — release 2.
+        Livewire::actingAs($storeOfficer)->test(CycleShow::class, ['cycle' => $cycle])
+            ->call('openRelease', $first->id)
+            ->set("releaseQuantities.{$line->id}", '2')
+            ->set("releaseReasons.{$line->id}", 'damaged')
+            ->call('confirmRelease')
+            ->assertHasNoErrors();
+
+        $price->refresh();
+        $this->assertEquals(4, (float) $price->quantity_in_store, 'The torn bag is no longer counted as good stock.');
+        $this->assertEquals(1, (float) $price->quantity_damaged);
+        $this->assertEquals(2, $price->quantityAvailable(), '4 good − 2 released.');
+        $this->assertEquals(120000, (float) $first->fresh()->commodity_subtotal, 'Charged for 2 bags only.');
+    }
+
     public function test_full_commodity_cycle_lifecycle_including_custom_item_promotion(): void
     {
         $secretary = User::factory()->create();
@@ -138,9 +369,10 @@ class CommodityLoanTest extends TestCase
         Livewire::actingAs($chairman)->test(CycleShow::class, ['cycle' => $cycle->fresh()])->call('authorize_');
         $this->assertSame('chairman_authorized', $cycle->fresh()->status);
 
-        // Store Officer releases goods to this specific member.
+        // Store Officer releases goods to this specific member (everything in stock).
         Livewire::actingAs($storeOfficer)->test(CycleShow::class, ['cycle' => $cycle->fresh()])
-            ->call('releaseGoods', $request->id);
+            ->call('openRelease', $request->id)
+            ->call('confirmRelease');
 
         $request->refresh();
         $this->assertSame('active', $request->status);

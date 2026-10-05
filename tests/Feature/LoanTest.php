@@ -581,4 +581,58 @@ class LoanTest extends TestCase
         $this->assertEquals(3000, (float) $account->fresh()->balance);
         $this->assertEquals(11000, (float) $loan->fresh()->outstanding_balance);
     }
+
+    public function test_member_sees_their_logged_repayments_and_each_status(): void
+    {
+        $borrower = $this->makeActiveMember(['staff_id' => 'FCET-7708']);
+        $loan = $this->makeActiveLoan($borrower, 11000);
+
+        foreach (['2000', '1500', '900'] as $amount) {
+            Livewire::actingAs($borrower->user)->test(MyLoans::class)
+                ->call('openRepay', $loan->id)
+                ->set('repay_amount', $amount)
+                ->call('submitRepayment');
+        }
+        [$confirmed, $declined] = \App\Models\LoanRepaymentIntent::orderBy('id')->get()->all();
+
+        $treasurer = User::factory()->create();
+        $treasurer->assignRole('treasurer');
+        Livewire::actingAs($treasurer)->test(LoanRepaymentIntents::class)
+            ->call('confirm', $confirmed->id)
+            ->call('openDecline', $declined->id)
+            ->set('decline_reason', 'No matching deposit')
+            ->call('decline');
+
+        Livewire::actingAs($borrower->user)->test(MyLoans::class)
+            ->assertSee('Logged Repayments')
+            ->assertSee('₦1,500.00')
+            ->assertSee('₦900.00')
+            ->assertSeeHtml('>Approved<')
+            ->assertSeeHtml('>Declined<')
+            ->assertSeeHtml('>Awaiting Treasurer<')
+            ->assertSee('Reason: No matching deposit');
+    }
+
+    public function test_treasurer_sees_the_members_savings_and_cannot_approve_more_than_is_usable(): void
+    {
+        $borrower = $this->makeActiveMember(['staff_id' => 'FCET-7707']);
+        $account = $this->withSavings($borrower, 10000);
+        $loan = $this->makeActiveLoan($borrower, 11000);
+
+        $request = LoanSavingsRepaymentRequest::create([
+            'loan_id' => $loan->id, 'member_id' => $borrower->id, 'savings_account_id' => $account->id,
+            'amount' => 8000, 'status' => LoanSavingsRepaymentRequest::STATUS_PENDING, 'requested_at' => now(),
+        ]);
+        $account->recordTransaction('withdrawal', 7000, 'Disbursed withdrawal', null);
+
+        $treasurer = User::factory()->create();
+        $treasurer->assignRole('treasurer');
+
+        Livewire::actingAs($treasurer)
+            ->test(SavingsLoanRepayments::class)
+            ->assertSee('Usable Savings')
+            ->assertSee('₦3,000.00')
+            ->assertSee('Exceeds usable savings — max ₦3,000.00')
+            ->assertDontSeeHtml("wire:click=\"approve({$request->id})\"");
+    }
 }

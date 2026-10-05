@@ -124,6 +124,10 @@
                             <h4 class="font-medium text-slate-900 dark:text-white">Loan Repayments from Savings</h4>
                             <p class="text-sm text-gray-500">Approve transfers from a member's savings balance to their loan.</p>
                         </a>
+                        <a href="{{ route('treasurer.loan-repayment-reversals') }}" wire:navigate class="block p-4 rounded-lg border border-slate-200 dark:border-gray-700 hover:border-emerald-400 hover:shadow-md bg-white dark:bg-gray-800/50 transition">
+                            <h4 class="font-medium text-slate-900 dark:text-white">Excess Repayment Reversals</h4>
+                            <p class="text-sm text-gray-500">Apply or refund amounts repaid beyond what a loan owed.</p>
+                        </a>
                     @endcan
 
                     @can('adjust_contribution')

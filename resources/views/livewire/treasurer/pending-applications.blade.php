@@ -90,7 +90,7 @@
                             </p>
                         @else
                             <p class="mt-1 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
-                                Not yet paid (₦{{ number_format((float) \App\Models\Setting::get('application_form_fee', 1000)) }}). The application cannot be approved until this is settled.
+                                Not yet paid (₦{{ number_format(\App\Models\ApplicationFeePayment::currentFee()) }}). The application cannot be approved until this is settled.
                             </p>
 
                             <label class="flex items-center gap-2 text-sm mt-2">

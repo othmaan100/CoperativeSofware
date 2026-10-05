@@ -121,33 +121,68 @@
                     @endif
                 </p>
 
+                @php $released = in_array($latest->status, ['active', 'not_supplied']); @endphp
                 <table class="w-full text-sm mb-4">
                     <thead class="text-xs uppercase text-gray-500">
-                        <tr><th class="text-left py-1">Item</th><th class="text-right py-1">Qty</th><th class="text-left py-1">Unit</th><th class="text-right py-1">Price</th><th class="text-right py-1">Line Total</th></tr>
+                        <tr>
+                            <th class="text-left py-1">Item</th>
+                            <th class="text-right py-1">Qty</th>
+                            @if ($released)<th class="text-right py-1">Released</th>@endif
+                            <th class="text-left py-1 pl-3">Unit</th>
+                            <th class="text-right py-1">Price</th>
+                            <th class="text-right py-1">{{ $released ? 'Charged' : 'Line Total' }}</th>
+                        </tr>
                     </thead>
                     <tbody>
                         @foreach ($latest->lines as $line)
-                            <tr class="border-b last:border-0">
+                            <tr class="border-b last:border-0 {{ $released && (float) $line->quantity_released === 0.0 ? 'text-gray-400' : '' }}">
                                 <td class="py-1">{{ $line->label() }}</td>
-                                <td class="py-1 text-right">{{ $line->quantity }}</td>
-                                <td class="py-1">{{ $line->unit_basis }}</td>
+                                <td class="py-1 text-right">{{ (float) $line->quantity }}</td>
+                                @if ($released)
+                                    <td class="py-1 text-right {{ $line->wasShortSupplied() ? 'text-amber-700' : '' }}">
+                                        {{ (float) $line->quantity_released === 0.0 ? ($line->shortfallLabel() ?? 'Not in stock') : (float) $line->quantity_released }}
+                                        @if ($line->wasShortSupplied() && (float) $line->quantity_released > 0 && $line->shortfallLabel())
+                                            <span class="block text-xs">{{ $line->shortfallLabel() }}</span>
+                                        @endif
+                                    </td>
+                                @endif
+                                <td class="py-1 pl-3">{{ $line->unit_basis }}</td>
                                 <td class="py-1 text-right">{{ $line->fixed_unit_price !== null ? '₦'.number_format((float) $line->fixed_unit_price, 2) : 'Not yet priced' }}</td>
-                                <td class="py-1 text-right">{{ $line->line_total !== null ? '₦'.number_format((float) $line->line_total, 2) : '—' }}</td>
+                                <td class="py-1 text-right">
+                                    @if ($released)
+                                        ₦{{ number_format((float) $line->released_line_total, 2) }}
+                                    @else
+                                        {{ $line->line_total !== null ? '₦'.number_format((float) $line->line_total, 2) : '—' }}
+                                    @endif
+                                </td>
                             </tr>
                         @endforeach
                     </tbody>
                 </table>
 
-                @if ($latest->total_repayable !== null)
+                @if ($latest->status === 'not_supplied')
+                    <p class="text-sm text-red-700">None of your requested items were in stock, so nothing was released and you have no loan from this cycle.</p>
+                @elseif ($latest->total_repayable !== null)
                     <div class="grid grid-cols-3 gap-4 text-sm border-t pt-4">
-                        <div><p class="text-gray-500">Subtotal</p><p class="font-semibold">₦{{ number_format((float) $latest->commodity_subtotal, 2) }}</p></div>
+                        <div>
+                            <p class="text-gray-500">{{ $released ? 'Value Released' : 'Subtotal' }}</p>
+                            <p class="font-semibold">₦{{ number_format((float) $latest->commodity_subtotal, 2) }}</p>
+                            @if ($released && abs($latest->requestedSubtotal() - (float) $latest->commodity_subtotal) > 0.001)
+                                <p class="text-xs text-gray-500">of ₦{{ number_format($latest->requestedSubtotal(), 2) }} requested</p>
+                            @endif
+                        </div>
                         <div><p class="text-gray-500">Total Repayable</p><p class="font-semibold">₦{{ number_format((float) $latest->total_repayable, 2) }}</p></div>
                         <div><p class="text-gray-500">Monthly Installment</p><p class="font-semibold">₦{{ number_format((float) $latest->monthly_installment, 2) }}</p></div>
                     </div>
                 @endif
 
                 @if ($latest->status === 'active')
-                    <p class="text-sm text-emerald-700 mt-4">Your goods have been released — track repayment under <a href="{{ route('my-loans') }}" wire:navigate class="underline">My Loans</a> (loan {{ $latest->loan?->loan_no }}).</p>
+                    <p class="text-sm text-emerald-700 mt-4">
+                        Your goods have been released — track repayment under <a href="{{ route('my-loans') }}" wire:navigate class="underline">My Loans</a> (loan {{ $latest->loan?->loan_no }}).
+                        @if ($latest->lines->contains(fn ($line) => $line->wasShortSupplied()))
+                            Some items were not in stock; you are only charged for what you received.
+                        @endif
+                    </p>
                 @endif
             </div>
         @else

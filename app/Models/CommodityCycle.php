@@ -77,6 +77,38 @@ class CommodityCycle extends Model
     }
 
     /**
+     * Set the unit price on every request line for this item, then refresh
+     * each affected member's subtotal, markup, total and installment.
+     */
+    public function applyItemPrice(int $commodityItemId, float $price): void
+    {
+        CommodityRequestLine::query()
+            ->where('commodity_item_id', $commodityItemId)
+            ->whereHas('request', fn ($q) => $q->where('commodity_cycle_id', $this->id))
+            ->get()
+            ->each(fn (CommodityRequestLine $line) => $line->update([
+                'fixed_unit_price' => $price,
+                'line_total' => round((float) $line->quantity * $price, 2),
+            ]));
+    }
+
+    public function recalculateRequestTotals(): void
+    {
+        foreach ($this->requests()->with('lines')->where('status', '!=', CommodityRequest::STATUS_CANCELLED)->get() as $request) {
+            $subtotal = round((float) $request->lines->sum('line_total'), 2);
+            $markup = round($subtotal * $this->markupPctTotal() / 100, 2);
+            $total = round($subtotal + $markup, 2);
+
+            $request->update([
+                'commodity_subtotal' => $subtotal,
+                'markup_amount' => $markup,
+                'total_repayable' => $total,
+                'monthly_installment' => round($total / max(1, (int) $this->tenure_months), 2),
+            ]);
+        }
+    }
+
+    /**
      * Aggregated demand across every (non-cancelled) request line in this
      * cycle — the sheet the committee takes to market, and what the
      * Secretary prices against.

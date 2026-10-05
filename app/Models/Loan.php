@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Notifications\LoanRepaymentReversalNotification;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -127,6 +128,11 @@ class Loan extends Model
     public function savingsRepaymentRequests(): HasMany
     {
         return $this->hasMany(LoanSavingsRepaymentRequest::class);
+    }
+
+    public function repaymentReversals(): HasMany
+    {
+        return $this->hasMany(LoanRepaymentReversal::class);
     }
 
     public function treasurerReviewedBy(): BelongsTo
@@ -303,6 +309,9 @@ class Loan extends Model
      * Post a repayment against this loan and update the cached outstanding
      * balance atomically — the ONLY way a loan's balance should change.
      * Applies FIFO against the oldest unpaid/overdue installment(s) first.
+     * Anything paid beyond the outstanding balance is reversed out of this
+     * loan's ledger and tracked as a LoanRepaymentReversal for the member to
+     * resolve (apply to another loan, or refund).
      */
     public function recordRepayment(
         string $type,
@@ -316,6 +325,7 @@ class Loan extends Model
             /** @var self $loan */
             $loan = self::query()->lockForUpdate()->findOrFail($this->id);
 
+            $excess = max(0, (float) bcsub((string) $amount, (string) $loan->outstanding_balance, 2));
             $newOutstanding = max(0, (float) bcsub((string) $loan->outstanding_balance, (string) $amount, 2));
 
             $remaining = $amount;
@@ -361,6 +371,31 @@ class Loan extends Model
                 $loan->closed_at = now();
             }
             $loan->save();
+
+            if ($excess > 0) {
+                $reversalTransaction = $loan->repaymentTransactions()->create([
+                    'type' => LoanRepaymentTransaction::TYPE_REVERSAL,
+                    'amount' => $excess,
+                    'balance_after' => $newOutstanding,
+                    'reference' => $reference,
+                    'description' => 'Excess over outstanding balance reversed — held for the member to apply to another loan or have refunded',
+                    'source_batch_id' => $sourceBatchId,
+                    'reversed_transaction_id' => $transaction->id,
+                    'posted_by' => $postedBy,
+                    'posted_at' => now(),
+                ]);
+
+                $reversal = LoanRepaymentReversal::create([
+                    'member_id' => $loan->member_id,
+                    'loan_id' => $loan->id,
+                    'repayment_transaction_id' => $transaction->id,
+                    'reversal_transaction_id' => $reversalTransaction->id,
+                    'amount' => $excess,
+                    'status' => LoanRepaymentReversal::STATUS_AWAITING_CHOICE,
+                ]);
+
+                $loan->member->user?->notify(new LoanRepaymentReversalNotification($reversal));
+            }
 
             $this->setAttribute('outstanding_balance', $newOutstanding);
             $this->setAttribute('status', $loan->status);
@@ -433,7 +468,9 @@ class Loan extends Model
                 continue;
             }
 
-            $amount = min((float) $guarantor->pledged_amount, (float) $account->balance);
+            // Never call more than the loan still owes — an excess here would be
+            // the guarantor's money, not the borrower's to apply or refund.
+            $amount = min((float) $guarantor->pledged_amount, (float) $account->balance, (float) $this->fresh()->outstanding_balance);
             if ($amount <= 0) {
                 continue;
             }

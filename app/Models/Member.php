@@ -186,6 +186,11 @@ class Member extends Model
         return $this->hasMany(Loan::class);
     }
 
+    public function repaymentReversals(): HasMany
+    {
+        return $this->hasMany(LoanRepaymentReversal::class);
+    }
+
     public function guaranteedLoans(): HasMany
     {
         return $this->hasMany(LoanGuarantor::class, 'guarantor_member_id');
