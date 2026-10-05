@@ -196,18 +196,23 @@ class SavingsReports extends Component
                 $member->department,
                 $member->membership_date?->format('Y-m-d'),
                 ucfirst($member->status),
-                $member->approved_monthly_contribution,
-                $member->opening_balance,
-                $member->total_contributed,
+                $this->money($member->approved_monthly_contribution),
+                $this->money($member->opening_balance),
+                $this->money($member->total_contributed),
                 $member->contribution_count,
                 $member->last_period ? Carbon::createFromFormat('!Y-m', $member->last_period)->format('M Y') : '',
-                $member->savings_balance,
+                $this->money($member->savings_balance),
             ]);
         }
 
         $totals = $this->memberContributionTotals();
         fputcsv($handle, ['', '', 'TOTAL ('.$totals->members.' members)', '', '', '', '',
-            $totals->monthly, $totals->opening, $totals->contributed, '', '', $totals->balance]);
+            $this->money($totals->monthly), $this->money($totals->opening), $this->money($totals->contributed), '', '', $this->money($totals->balance)]);
+    }
+
+    protected function money($value): string
+    {
+        return number_format((float) $value, 2, '.', '');
     }
 
     protected function writeLowBalanceCsv($handle): void

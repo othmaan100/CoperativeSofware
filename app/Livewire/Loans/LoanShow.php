@@ -22,7 +22,7 @@ class LoanShow extends Component
     #[Layout('layouts.app')]
     public function render()
     {
-        $this->loan->load(['member', 'product', 'guarantors.guarantorMember']);
+        $this->loan->load(['member', 'product', 'guarantors.guarantorMember', 'tenureChangeRequests' => fn ($q) => $q->latest('requested_at')]);
 
         return view('livewire.loans.loan-show');
     }

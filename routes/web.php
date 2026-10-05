@@ -139,10 +139,12 @@ Route::middleware('auth')->group(function () {
     Route::get('treasurer/loan-repayment-intents', LoanRepaymentIntents::class)->name('treasurer.loan-repayment-intents');
     Route::get('treasurer/savings-loan-repayments', \App\Livewire\Treasurer\SavingsLoanRepayments::class)->name('treasurer.savings-loan-repayments');
     Route::get('treasurer/loan-repayment-reversals', \App\Livewire\Treasurer\LoanRepaymentReversals::class)->name('treasurer.loan-repayment-reversals');
+    Route::get('treasurer/loan-tenure-changes', \App\Livewire\Treasurer\LoanTenureChanges::class)->name('treasurer.loan-tenure-changes');
     Route::get('treasurer/loan-imports', LoanImports::class)->name('treasurer.loan-imports.index');
     Route::get('treasurer/loan-imports/{batch}', LoanImportShow::class)->name('treasurer.loan-imports.show');
 
     Route::get('chairman/loans', LoanAuthorizations::class)->name('chairman.loans');
+    Route::get('chairman/loan-tenure-changes', \App\Livewire\Chairman\LoanTenureApprovals::class)->name('chairman.loan-tenure-changes');
 
     Route::get('admin/loan-products', LoanProductsManager::class)->name('admin.loan-products.index');
 

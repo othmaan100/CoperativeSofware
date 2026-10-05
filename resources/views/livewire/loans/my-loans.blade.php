@@ -29,7 +29,7 @@
                                 <th class="py-2 pr-3">Date</th>
                                 <th class="py-2 pr-3">From Loan</th>
                                 <th class="py-2 pr-3 text-right">Excess</th>
-                                <th class="py-2 pr-3">Your Choice</th>
+                                <th class="py-2 pl-6 pr-3">Your Choice</th>
                                 <th class="py-2 pr-3">Status</th>
                                 <th class="py-2"></th>
                             </tr>
@@ -40,7 +40,7 @@
                                     <td class="py-2 pr-3">{{ $reversal->created_at->format('d M Y') }}</td>
                                     <td class="py-2 pr-3">{{ $reversal->loan->loan_no }}</td>
                                     <td class="py-2 pr-3 text-right font-semibold">₦{{ number_format((float) $reversal->amount, 2) }}</td>
-                                    <td class="py-2 pr-3">{{ $reversal->resolutionLabel() }}</td>
+                                    <td class="py-2 pl-6 pr-3">{{ $reversal->resolutionLabel() }}</td>
                                     <td class="py-2 pr-3">
                                         <span class="{{ match ($reversal->status) {
                                             'completed' => 'text-green-700',
@@ -112,7 +112,7 @@
                                     <tr>
                                         <th class="py-1 pr-3 font-normal">Logged</th>
                                         <th class="py-1 pr-3 font-normal text-right">Amount</th>
-                                        <th class="py-1 pr-3 font-normal">Note</th>
+                                        <th class="py-1 pl-6 pr-3 font-normal">Note</th>
                                         <th class="py-1 pr-3 font-normal">Receipt</th>
                                         <th class="py-1 font-normal">Status</th>
                                     </tr>
@@ -122,7 +122,7 @@
                                         <tr wire:key="intent-{{ $intent->id }}">
                                             <td class="py-1.5 pr-3 whitespace-nowrap">{{ $intent->requested_at->format('d M Y') }}</td>
                                             <td class="py-1.5 pr-3 text-right whitespace-nowrap">₦{{ number_format((float) $intent->amount, 2) }}</td>
-                                            <td class="py-1.5 pr-3 text-gray-600 dark:text-gray-400">{{ $intent->note ?: '—' }}</td>
+                                            <td class="py-1.5 pl-6 pr-3 text-gray-600 dark:text-gray-400">{{ $intent->note ?: '—' }}</td>
                                             <td class="py-1.5 pr-3">
                                                 @if ($intent->receipt_path)
                                                     <a href="{{ route('loan-repayment-intents.receipt', $intent) }}" class="text-emerald-600 hover:underline">View</a>

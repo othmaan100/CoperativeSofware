@@ -8,6 +8,7 @@ use App\Models\LoanProduct;
 use App\Models\Member;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -41,7 +42,12 @@ class ApplyForLoan extends Component
     #[Computed]
     public function products()
     {
-        return LoanProduct::query()->where('is_active', true)->orderBy('name')->get();
+        // Commodity loans are only created by releasing goods in a commodity cycle.
+        return LoanProduct::query()
+            ->where('is_active', true)
+            ->where('code', '!=', LoanProduct::COMMODITY)
+            ->orderBy('name')
+            ->get();
     }
 
     #[Computed]
@@ -65,7 +71,7 @@ class ApplyForLoan extends Component
         $product = $this->selectedProduct;
 
         $rules = [
-            'loan_product_id' => ['required', 'exists:loan_products,id'],
+            'loan_product_id' => ['required', Rule::in($this->products->pluck('id')->all())],
             'principal_amount' => ['required', 'numeric', 'min:1'],
             'tenure_months' => ['required', 'integer', 'min:1', 'max:'.($product?->max_tenure_months ?? 12)],
         ];

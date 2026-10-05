@@ -73,7 +73,7 @@
                     <tr>
                         <th class="text-left py-1">Item</th>
                         <th class="text-right py-1">Total Qty</th>
-                        <th class="text-left py-1">Unit</th>
+                        <th class="text-left py-1 pl-4">Unit</th>
                         <th class="text-right py-1">Requests</th>
                         @if ($cycle->status === 'requests_closed')
                             <th class="text-right py-1">Unit Price (₦)</th>
@@ -87,7 +87,7 @@
                         <tr class="border-b last:border-0" wire:key="demand-{{ $key }}">
                             <td class="py-1">{{ $row->label }}</td>
                             <td class="py-1 text-right">{{ rtrim(rtrim(number_format($row->total_quantity, 2), '0'), '.') }}</td>
-                            <td class="py-1">{{ $row->unit_basis }}</td>
+                            <td class="py-1 pl-4">{{ $row->unit_basis }}</td>
                             <td class="py-1 text-right">{{ $row->request_count }}</td>
                             @if ($cycle->status === 'requests_closed')
                                 @can('price_commodity_cycle')
@@ -133,7 +133,7 @@
                                     <th class="py-2 pr-3">Item</th>
                                     <th class="py-2 pr-3 text-right">Qty Requested</th>
                                     <th class="py-2 pr-3 text-right">Secretary's Price</th>
-                                    <th class="py-2 pr-3">Verified Price (₦)</th>
+                                    <th class="py-2 pl-6 pr-3">Verified Price (₦)</th>
                                     <th class="py-2 text-right">Value</th>
                                 </tr>
                             </thead>
@@ -148,7 +148,7 @@
                                         <td class="py-2 pr-3">{{ $item->label() }}</td>
                                         <td class="py-2 pr-3 text-right">{{ $qty + 0 }}</td>
                                         <td class="py-2 pr-3 text-right">₦{{ number_format((float) $item->unit_price, 2) }}</td>
-                                        <td class="py-2 pr-3">
+                                        <td class="py-2 pl-6 pr-3">
                                             <input type="number" step="0.01" min="0" wire:model.live.debounce.400ms="auditPrices.{{ $item->id }}"
                                                    class="w-32 text-right text-sm border-gray-300 dark:bg-gray-700 dark:border-gray-600 rounded-md shadow-sm">
                                             @if ($changed)<span class="block text-xs text-amber-700">Corrected</span>@endif
@@ -259,20 +259,19 @@
             </div>
         @endif
 
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 flex flex-wrap gap-4 items-center">
-            @can('authorize_commodity_cycle')
-                @if ($cycle->status === 'store_approved')
+        @php $canAuthorize = $cycle->status === 'store_approved' && auth()->user()->can('authorize_commodity_cycle'); @endphp
+        @if ($canAuthorize || $cycle->auditor_verified_at || $cycle->store_approved_at || $cycle->chairman_authorized_at)
+            <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 flex flex-wrap gap-4 items-center">
+                @if ($canAuthorize)
                     <x-primary-button wire:click="authorize_" wire:confirm="Authorize this cycle? Goods can then be released to members.">Chairman: Authorize Cycle</x-primary-button>
                 @endif
-            @endcan
-            @if (in_array($cycle->status, ['priced', 'auditor_verified', 'store_approved', 'chairman_authorized', 'active']))
                 <span class="text-sm text-gray-500">
                     @if ($cycle->auditor_verified_at) Prices verified {{ $cycle->auditor_verified_at->format('d M Y') }}. @endif
                     @if ($cycle->store_approved_at) Stock verified {{ $cycle->store_approved_at->format('d M Y') }}. @endif
                     @if ($cycle->chairman_authorized_at) Authorized {{ $cycle->chairman_authorized_at->format('d M Y') }}. @endif
                 </span>
-            @endif
-        </div>
+            </div>
+        @endif
 
         <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-x-auto">
             <table class="min-w-full text-sm">
@@ -341,10 +340,10 @@
                             <tr>
                                 <th class="py-2 pr-3">Item</th>
                                 <th class="py-2 pr-3 text-right">Requested</th>
-                                <th class="py-2 pr-3 text-right">Good Stock Left</th>
-                                <th class="py-2 pr-3 text-right">Unit Price</th>
-                                <th class="py-2 pr-3">Qty Released</th>
-                                <th class="py-2 text-right">Value</th>
+                                <th class="py-2 px-3 text-right whitespace-nowrap">Good Stock Left</th>
+                                <th class="py-2 px-3 text-right whitespace-nowrap">Unit Price</th>
+                                <th class="py-2 px-3">Qty Released</th>
+                                <th class="py-2 pl-3 text-right">Value</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -359,8 +358,8 @@
                                 <tr wire:key="release-line-{{ $line->id }}" class="{{ $none ? 'bg-red-50 dark:bg-red-900/20' : ($short ? 'bg-amber-50 dark:bg-amber-900/20' : '') }}">
                                     <td class="py-2 pr-3">{{ $line->label() }}<span class="block text-xs text-gray-500">{{ $line->unit_basis }}</span></td>
                                     <td class="py-2 pr-3 text-right">{{ (float) $line->quantity }}</td>
-                                    <td class="py-2 pr-3 text-right {{ $left !== null && $left < (float) $line->quantity ? 'text-amber-700 font-semibold' : '' }}">{{ $left === null ? '—' : $left + 0 }}</td>
-                                    <td class="py-2 pr-3 text-right">₦{{ number_format((float) $line->fixed_unit_price, 2) }}</td>
+                                    <td class="py-2 px-3 text-right {{ $left !== null && $left < (float) $line->quantity ? 'text-amber-700 font-semibold' : '' }}">{{ $left === null ? '—' : $left + 0 }}</td>
+                                    <td class="py-2 px-3 text-right whitespace-nowrap">₦{{ number_format((float) $line->fixed_unit_price, 2) }}</td>
                                     <td class="py-2 pr-3">
                                         <div class="flex items-center gap-2">
                                             <input type="number" step="0.01" min="0" max="{{ $left === null ? (float) $line->quantity : min((float) $line->quantity, $left) }}"
@@ -380,7 +379,7 @@
                                             <x-input-error :messages="$errors->get('releaseReasons.'.$line->id)" class="mt-1" />
                                         @endif
                                     </td>
-                                    <td class="py-2 text-right">{{ $none ? 'Not released' : '₦'.number_format($value, 2) }}</td>
+                                    <td class="py-2 pl-3 text-right whitespace-nowrap">{{ $none ? 'Not released' : '₦'.number_format($value, 2) }}</td>
                                 </tr>
                             @endforeach
                         </tbody>

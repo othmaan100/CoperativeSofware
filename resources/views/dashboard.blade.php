@@ -156,6 +156,10 @@
                             <h4 class="font-medium text-slate-900 dark:text-white">Loan Applications</h4>
                             <p class="text-sm text-gray-500">Review, endorse and disburse member loans.</p>
                         </a>
+                        <a href="{{ route('treasurer.loan-tenure-changes') }}" wire:navigate class="block p-4 rounded-lg border border-slate-200 dark:border-gray-700 hover:border-emerald-400 hover:shadow-md bg-white dark:bg-gray-800/50 transition">
+                            <h4 class="font-medium text-slate-900 dark:text-white">Loan Tenure Changes</h4>
+                            <p class="text-sm text-gray-500">Request a longer tenure for a member's active loan.</p>
+                        </a>
                     @endcan
 
                     @can('post_loan_repayment_batch')
@@ -176,6 +180,10 @@
                         <a href="{{ route('chairman.loans') }}" wire:navigate class="block p-4 rounded-lg border border-slate-200 dark:border-gray-700 hover:border-emerald-400 hover:shadow-md bg-white dark:bg-gray-800/50 transition">
                             <h4 class="font-medium text-slate-900 dark:text-white">Loan Authorizations</h4>
                             <p class="text-sm text-gray-500">Give final sign-off on Treasurer-endorsed loans.</p>
+                        </a>
+                        <a href="{{ route('chairman.loan-tenure-changes') }}" wire:navigate class="block p-4 rounded-lg border border-slate-200 dark:border-gray-700 hover:border-emerald-400 hover:shadow-md bg-white dark:bg-gray-800/50 transition">
+                            <h4 class="font-medium text-slate-900 dark:text-white">Loan Tenure Approvals</h4>
+                            <p class="text-sm text-gray-500">Approve or decline Treasurer requests to extend a loan's tenure.</p>
                         </a>
                     @endcan
 

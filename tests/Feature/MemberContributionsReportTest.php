@@ -61,15 +61,14 @@ class MemberContributionsReportTest extends TestCase
 
         Livewire::actingAs($this->treasurer)
             ->test(SavingsReports::class)
-            ->assertSee("All Members' Contributions")
+            ->assertSee("All Members' Contributions", false)
             ->assertSee('Amina Bello')
             ->assertSee('Musa Garba')
             ->assertDontSee('Pending Person')
             ->assertSee('Jul 2025')
             ->assertSee('₦20,000.00')
             ->set('contributionSearch', 'FCE2')
-            ->assertSee('Musa Garba')
-            ->assertDontSee('Amina Bello');
+            ->assertViewHas('memberContributions', fn ($page) => $page->pluck('full_name')->all() === ['Musa Garba']);
 
         $this->assertNotNull($musa);
     }

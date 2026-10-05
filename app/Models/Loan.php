@@ -130,6 +130,11 @@ class Loan extends Model
         return $this->hasMany(LoanSavingsRepaymentRequest::class);
     }
 
+    public function tenureChangeRequests(): HasMany
+    {
+        return $this->hasMany(LoanTenureChangeRequest::class);
+    }
+
     public function repaymentReversals(): HasMany
     {
         return $this->hasMany(LoanRepaymentReversal::class);
@@ -401,6 +406,108 @@ class Loan extends Model
             $this->setAttribute('status', $loan->status);
 
             return $transaction;
+        });
+    }
+
+    /**
+     * Why this loan's tenure cannot be extended to $newTenure months, or null
+     * if it can. Only running loans with a balance qualify, and the new
+     * tenure must be longer than the current one.
+     */
+    public function tenureExtensionError(int $newTenure): ?string
+    {
+        if (! in_array($this->status, ['active', 'overdue', 'defaulted'], true)) {
+            return 'Only active loans can have their tenure extended.';
+        }
+
+        if ((float) $this->outstanding_balance <= 0) {
+            return 'This loan has nothing left to repay.';
+        }
+
+        if ($newTenure <= (int) $this->tenure_months) {
+            return "The new tenure must be longer than the current {$this->tenure_months} months.";
+        }
+
+        if ($newTenure > 120) {
+            return 'The new tenure cannot be more than 120 months.';
+        }
+
+        return null;
+    }
+
+    /**
+     * The installment the member would pay if the tenure became $newTenure
+     * months: the outstanding balance spread evenly over the installments not
+     * yet fully paid. Flat-rate interest is charged on the principal only, so
+     * a longer tenure adds no extra interest.
+     */
+    public function installmentForTenure(int $newTenure): float
+    {
+        $paidCount = $this->schedules()->where('status', LoanRepaymentSchedule::STATUS_PAID)->count();
+        $remaining = max(1, $newTenure - $paidCount);
+
+        return round((float) $this->outstanding_balance / $remaining, 2);
+    }
+
+    /**
+     * Lengthen the tenure and re-spread the outstanding balance. Fully paid
+     * installments are left alone; the unpaid ones keep their due dates and
+     * any amount already paid towards them, but now owe the new installment;
+     * extra installments are added monthly after the last due date. The final
+     * installment absorbs rounding so the schedule still sums to what is
+     * owed. Returns the new monthly installment.
+     */
+    public function extendTenure(int $newTenure): float
+    {
+        if ($error = $this->tenureExtensionError($newTenure)) {
+            throw new \RuntimeException($error);
+        }
+
+        return DB::transaction(function () use ($newTenure) {
+            $schedules = $this->schedules()->orderBy('installment_no')->get();
+            $paidCount = $schedules->where('status', LoanRepaymentSchedule::STATUS_PAID)->count();
+            $unpaid = $schedules->where('status', '!=', LoanRepaymentSchedule::STATUS_PAID)->values();
+            $remaining = $newTenure - $paidCount;
+
+            if ($unpaid->count() > $remaining) {
+                throw new \RuntimeException("The new tenure must leave at least {$unpaid->count()} unpaid installment(s).");
+            }
+
+            $outstanding = (float) $this->outstanding_balance;
+            $installment = round($outstanding / $remaining, 2);
+            $lastDue = $schedules->max('due_date') ?? ($this->disbursed_at ?? now());
+            $nextNo = (int) $schedules->max('installment_no');
+            $running = 0.0;
+
+            for ($i = 1; $i <= $remaining; $i++) {
+                $amount = $i === $remaining ? round($outstanding - $running, 2) : $installment;
+                $running = round($running + $amount, 2);
+
+                if ($schedule = $unpaid->get($i - 1)) {
+                    $schedule->update([
+                        'amount_due' => round((float) $schedule->amount_paid + $amount, 2),
+                        'status' => match (true) {
+                            $schedule->status === LoanRepaymentSchedule::STATUS_OVERDUE => LoanRepaymentSchedule::STATUS_OVERDUE,
+                            (float) $schedule->amount_paid > 0 => LoanRepaymentSchedule::STATUS_PARTIALLY_PAID,
+                            default => LoanRepaymentSchedule::STATUS_PENDING,
+                        },
+                    ]);
+
+                    continue;
+                }
+
+                $this->schedules()->create([
+                    'installment_no' => ++$nextNo,
+                    'due_date' => Carbon::parse($lastDue)->addMonthsNoOverflow($i - $unpaid->count())->toDateString(),
+                    'amount_due' => $amount,
+                    'amount_paid' => 0,
+                    'status' => LoanRepaymentSchedule::STATUS_PENDING,
+                ]);
+            }
+
+            $this->update(['tenure_months' => $newTenure, 'monthly_installment' => $installment]);
+
+            return $installment;
         });
     }
 

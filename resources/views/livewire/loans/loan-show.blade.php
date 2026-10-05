@@ -30,6 +30,25 @@
                     </ul>
                 </div>
             @endif
+
+            @if ($loan->tenureChangeRequests->isNotEmpty())
+                <div class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                    <h4 class="text-xs uppercase text-gray-500 mb-2">Tenure Changes</h4>
+                    <ul class="text-sm space-y-1">
+                        @foreach ($loan->tenureChangeRequests as $change)
+                            <li>
+                                {{ $change->requested_at->format('d M Y') }}: {{ $change->current_tenure_months }} → {{ $change->requested_tenure_months }} months
+                                — {{ ucfirst($change->status) }}
+                                @if ($change->status === 'approved')
+                                    (monthly repayment ₦{{ number_format((float) $change->current_installment, 2) }} → ₦{{ number_format((float) $change->applied_installment, 2) }})
+                                @elseif ($change->status === 'declined' && $change->chairman_note)
+                                    ({{ $change->chairman_note }})
+                                @endif
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
         </div>
 
         <livewire:documents.documents-panel :documentable="$loan" :key="'loan-docs-'.$loan->id" />

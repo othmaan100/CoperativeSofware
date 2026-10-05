@@ -328,7 +328,7 @@ new class extends Component
             @endcanany
 
             @canany(['treasurer_review_loan', 'post_loan_repayment_batch', 'confirm_loan_repayment', 'import_loans', 'chairman_authorize_loan', 'manage_loan_products', 'set_loan_interest_rates', 'manage_loan_limit_multiplier', 'manage_commodity_catalogue', 'manage_commodity_cycles', 'price_commodity_cycle', 'verify_commodity_cycle', 'approve_commodity_cycle', 'authorize_commodity_cycle', 'release_commodity_goods'])
-                <x-sidebar-group label="Loans" :active="request()->routeIs(['treasurer.loans', 'treasurer.loan-repayment-batches.*', 'treasurer.loan-repayment-intents', 'treasurer.savings-loan-repayments', 'treasurer.loan-repayment-reversals','treasurer.loan-imports.*', 'chairman.loans', 'admin.loan-products.*', 'commodities.*'])">
+                <x-sidebar-group label="Loans" :active="request()->routeIs(['treasurer.loans', 'treasurer.loan-repayment-batches.*', 'treasurer.loan-repayment-intents', 'treasurer.savings-loan-repayments', 'treasurer.loan-repayment-reversals','treasurer.loan-tenure-changes', 'treasurer.loan-imports.*', 'chairman.loans', 'chairman.loan-tenure-changes', 'admin.loan-products.*', 'commodities.*'])">
                     @can('treasurer_review_loan')
                         <x-sidebar-link :href="route('treasurer.loans')" :active="request()->routeIs('treasurer.loans')" wire:navigate>
                             {{ __('Loan Applications') }}
@@ -353,6 +353,12 @@ new class extends Component
                         </x-sidebar-link>
                     @endcan
 
+                    @can('treasurer_review_loan')
+                        <x-sidebar-link :href="route('treasurer.loan-tenure-changes')" :active="request()->routeIs('treasurer.loan-tenure-changes')" wire:navigate>
+                            {{ __('Loan Tenure Changes') }}
+                        </x-sidebar-link>
+                    @endcan
+
                     @can('import_loans')
                         <x-sidebar-link :href="route('treasurer.loan-imports.index')" :active="request()->routeIs('treasurer.loan-imports.*')" wire:navigate>
                             {{ __('Loan Import') }}
@@ -362,6 +368,9 @@ new class extends Component
                     @can('chairman_authorize_loan')
                         <x-sidebar-link :href="route('chairman.loans')" :active="request()->routeIs('chairman.loans')" wire:navigate>
                             {{ __('Loan Authorizations') }}
+                        </x-sidebar-link>
+                        <x-sidebar-link :href="route('chairman.loan-tenure-changes')" :active="request()->routeIs('chairman.loan-tenure-changes')" wire:navigate>
+                            {{ __('Loan Tenure Approvals') }}
                         </x-sidebar-link>
                     @endcan
 
