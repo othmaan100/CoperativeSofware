@@ -37,6 +37,8 @@ class WithdrawalRequest extends Model
         'disbursed_by',
         'disbursed_at',
         'requested_at',
+        'is_legacy_import',
+        'withdrawal_import_batch_id',
     ];
 
     protected $casts = [
@@ -46,6 +48,7 @@ class WithdrawalRequest extends Model
         'chairman_reviewed_at' => 'datetime',
         'disbursed_at' => 'datetime',
         'requested_at' => 'datetime',
+        'is_legacy_import' => 'boolean',
     ];
 
     public function member(): BelongsTo

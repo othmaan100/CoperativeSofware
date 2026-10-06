@@ -235,6 +235,10 @@ class SavingsAccount extends Model
     /**
      * Post a transaction against this account and update the cached balance
      * atomically. This is the ONLY way balances should ever change.
+     *
+     * $postedAt backdates the entry (e.g. a historical record imported from
+     * the manual books). When it lands before existing entries, every running
+     * balance is rebuilt in date order so balanceAsOf() stays correct.
      */
     public function recordTransaction(
         string $type,
@@ -245,8 +249,9 @@ class SavingsAccount extends Model
         ?int $sourceBatchId = null,
         ?int $withdrawalRequestId = null,
         ?int $reversedTransactionId = null,
+        ?Carbon $postedAt = null,
     ): SavingsTransaction {
-        return DB::transaction(function () use ($type, $amount, $description, $postedBy, $reference, $sourceBatchId, $withdrawalRequestId, $reversedTransactionId) {
+        return DB::transaction(function () use ($type, $amount, $description, $postedBy, $reference, $sourceBatchId, $withdrawalRequestId, $reversedTransactionId, $postedAt) {
             /** @var self $account */
             $account = self::query()->lockForUpdate()->findOrFail($this->id);
 
@@ -261,7 +266,7 @@ class SavingsAccount extends Model
                 'reference' => $reference,
                 'description' => $description,
                 'posted_by' => $postedBy,
-                'posted_at' => now(),
+                'posted_at' => $postedAt ?? now(),
                 'source_batch_id' => $sourceBatchId,
                 'withdrawal_request_id' => $withdrawalRequestId,
                 'reversed_transaction_id' => $reversedTransactionId,
@@ -270,7 +275,39 @@ class SavingsAccount extends Model
             $account->update(['balance' => $newBalance]);
             $this->setAttribute('balance', $newBalance);
 
+            if ($postedAt && $account->transactions()->where('posted_at', '>', $postedAt)->exists()) {
+                $this->rebuildRunningBalances();
+                $transaction->refresh();
+            }
+
             return $transaction;
+        });
+    }
+
+    /**
+     * Recompute every entry's balance_after in date order (posted_at, then
+     * id). Needed after entries are backdated, since balance_after is first
+     * written in the order entries were posted, not the order they happened.
+     * The final balance is the same either way; only the history changes.
+     */
+    public function rebuildRunningBalances(): void
+    {
+        DB::transaction(function () {
+            $account = self::query()->lockForUpdate()->findOrFail($this->id);
+            $running = '0.00';
+
+            foreach ($account->transactions()->reorder()->orderBy('posted_at')->orderBy('id')->get(['id', 'type', 'amount', 'balance_after']) as $entry) {
+                $running = in_array($entry->type, self::CREDIT_TYPES, true)
+                    ? bcadd($running, (string) $entry->amount, 2)
+                    : bcsub($running, (string) $entry->amount, 2);
+
+                if (bccomp($running, (string) $entry->balance_after, 2) !== 0) {
+                    SavingsTransaction::query()->whereKey($entry->id)->update(['balance_after' => $running]);
+                }
+            }
+
+            $account->update(['balance' => $running]);
+            $this->setAttribute('balance', $running);
         });
     }
 }

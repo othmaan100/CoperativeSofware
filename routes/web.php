@@ -109,6 +109,8 @@ Route::middleware('auth')->group(function () {
 
     Route::get('treasurer/contribution-batches', ContributionBatches::class)->name('treasurer.contribution-batches.index');
     Route::get('treasurer/contribution-batches/{batch}', ContributionBatchShow::class)->name('treasurer.contribution-batches.show');
+    Route::get('treasurer/withdrawal-imports', \App\Livewire\Treasurer\WithdrawalImports::class)->name('treasurer.withdrawal-imports.index');
+    Route::get('treasurer/withdrawal-imports/{batch}', \App\Livewire\Treasurer\WithdrawalImportShow::class)->name('treasurer.withdrawal-imports.show');
     Route::get('treasurer/voluntary-deposits', VoluntaryDeposits::class)->name('treasurer.voluntary-deposits');
     Route::get('voluntary-deposits/{intent}/receipt', [\App\Http\Controllers\ReceiptController::class, 'depositReceipt'])->name('voluntary-deposits.receipt');
     Route::get('loan-repayment-intents/{intent}/receipt', [\App\Http\Controllers\ReceiptController::class, 'repaymentReceipt'])->name('loan-repayment-intents.receipt');

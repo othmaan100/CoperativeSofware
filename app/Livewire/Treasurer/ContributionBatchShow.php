@@ -74,8 +74,9 @@ class ContributionBatchShow extends Component
         $userId = Auth::id();
         $batch = $this->batch;
         $sharePurchases = 0;
+        $postedAt = ContributionBatch::contributionDate($batch->period);
 
-        DB::transaction(function () use ($matchedRows, $regularProduct, $userId, $batch, &$sharePurchases) {
+        DB::transaction(function () use ($matchedRows, $regularProduct, $userId, $batch, $postedAt, &$sharePurchases) {
             $unitPrice = SharePriceHistory::currentPrice();
 
             foreach ($matchedRows as $row) {
@@ -93,6 +94,7 @@ class ContributionBatchShow extends Component
                     postedBy: $userId,
                     reference: "BATCH-{$batch->id}",
                     sourceBatchId: $batch->id,
+                    postedAt: $postedAt,
                 );
 
                 $shares = (int) ($row['shares'] ?? 0);

@@ -200,10 +200,13 @@ new class extends Component
             @endcanany
 
             @canany(['post_contribution_batch', 'confirm_voluntary_deposit', 'adjust_contribution', 'treasurer_review_withdrawal', 'chairman_authorize_withdrawal', 'initiate_reversal', 'authorize_reversal', 'manage_withdrawal_conditions'])
-                <x-sidebar-group label="Savings & Withdrawals" :active="request()->routeIs(['treasurer.contribution-batches.*', 'treasurer.voluntary-deposits', 'treasurer.contribution-change-requests', 'treasurer.withdrawals', 'chairman.withdrawals', 'reversals.*', 'withdrawal-conditions.*'])">
+                <x-sidebar-group label="Savings & Withdrawals" :active="request()->routeIs(['treasurer.contribution-batches.*', 'treasurer.withdrawal-imports.*', 'treasurer.voluntary-deposits', 'treasurer.contribution-change-requests', 'treasurer.withdrawals', 'chairman.withdrawals', 'reversals.*', 'withdrawal-conditions.*'])">
                     @can('post_contribution_batch')
                         <x-sidebar-link :href="route('treasurer.contribution-batches.index')" :active="request()->routeIs('treasurer.contribution-batches.*')" wire:navigate>
                             {{ __('Contributions') }}
+                        </x-sidebar-link>
+                        <x-sidebar-link :href="route('treasurer.withdrawal-imports.index')" :active="request()->routeIs('treasurer.withdrawal-imports.*')" wire:navigate>
+                            {{ __('Withdrawal Import') }}
                         </x-sidebar-link>
                     @endcan
 

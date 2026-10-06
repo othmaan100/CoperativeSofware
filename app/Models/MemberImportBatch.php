@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\Csv;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Hash;
@@ -283,11 +284,24 @@ class MemberImportBatch extends Model
                     description: 'Opening balance migrated from manual records',
                     postedBy: $importedBy,
                     reference: 'IMPORT-'.$row['staff_id'],
+                    postedAt: self::openingBalanceDate($member),
                 );
             }
         }
 
         return $member;
+    }
+
+    /**
+     * The date an imported opening balance is recorded on: the day the
+     * member joined, so later contributions and withdrawals sit after it.
+     * Without a (past) join date, it is recorded now.
+     */
+    public static function openingBalanceDate(Member $member): Carbon
+    {
+        return $member->membership_date && $member->membership_date->isPast()
+            ? $member->membership_date->copy()->startOfDay()
+            : now();
     }
 
     /**

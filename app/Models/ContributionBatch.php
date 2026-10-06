@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -45,5 +46,17 @@ class ContributionBatch extends Model
     public function flaggedRows(): array
     {
         return collect($this->rows ?? [])->where('matched', false)->all();
+    }
+
+    /**
+     * The date a period's contributions are recorded on: the last day of that
+     * month, when salary deductions are made. A month that hasn't ended yet
+     * is recorded now, so nothing is ever dated in the future.
+     */
+    public static function contributionDate(string $period): Carbon
+    {
+        $date = Carbon::createFromFormat('!Y-m', $period)->endOfMonth()->startOfDay();
+
+        return $date->isFuture() ? now() : $date;
     }
 }
