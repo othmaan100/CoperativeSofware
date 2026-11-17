@@ -103,10 +103,20 @@
                         <h3 class="font-semibold">Need to withdraw?</h3>
                         <p class="text-sm text-gray-500">Requests are reviewed by the Treasurer and authorized by the Chairman before disbursement.</p>
                     </div>
-                    <div class="flex gap-2">
-                        <a href="{{ route('savings.withdraw') }}" wire:navigate>
-                            <x-secondary-button>Request Withdrawal</x-secondary-button>
-                        </a>
+                    <a href="{{ route('savings.withdraw') }}" wire:navigate>
+                        <x-secondary-button>Request Withdrawal</x-secondary-button>
+                    </a>
+                </div>
+            </div>
+
+            {{-- Kept in its own section, well away from the ordinary withdrawal button, so it is not clicked by mistake. --}}
+            <div style="padding-top: 8rem;">
+                <div class="border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 rounded-lg p-6">
+                    <div class="flex items-center justify-between flex-wrap gap-3">
+                        <div>
+                            <h3 class="font-semibold text-red-700 dark:text-red-400">Complete Withdrawal</h3>
+                            <p class="text-sm text-red-700/80 dark:text-red-300/80">This requests your <strong>entire</strong> savings balance. Only use this if you intend to withdraw everything.</p>
+                        </div>
                         <a href="{{ route('savings.complete-withdraw') }}" wire:navigate>
                             <x-danger-button>Request Complete Withdrawal</x-danger-button>
                         </a>
