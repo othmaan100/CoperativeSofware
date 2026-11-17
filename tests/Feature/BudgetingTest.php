@@ -182,6 +182,57 @@ class BudgetingTest extends TestCase
         Notification::assertSentTo($treasurer, ExpenseAuthorizationDecisionNotification::class);
     }
 
+    public function test_chairman_sees_past_decisions_in_the_decision_history(): void
+    {
+        Notification::fake();
+        $treasurer = $this->makeUserWithRole('treasurer');
+        $chairman = $this->makeUserWithRole('chairman');
+        [$startYear] = FinancialYear::current();
+
+        $amounts = array_fill_keys(array_keys(Budget::CATEGORIES), 0);
+        $amounts['miscellaneous'] = 20000;
+        $budget = $this->fillAndSubmitBudget($treasurer, $startYear, $amounts);
+
+        // Returned once, resubmitted, then approved — both decisions must appear.
+        Livewire::actingAs($chairman)->test(BudgetApprovals::class)->call('returnBudget', $budget->id);
+        Livewire::actingAs($treasurer)->test(BudgetManager::class)->set('startYear', $startYear)->call('submitForApproval');
+        Livewire::actingAs($chairman)->test(BudgetApprovals::class)->call('approveBudget', $budget->id);
+
+        $line = $budget->fresh()->lines()->where('category', 'miscellaneous')->firstOrFail();
+        foreach (['Approved item', 'Rejected item'] as $description) {
+            Livewire::actingAs($treasurer)
+                ->test(BudgetManager::class)
+                ->set('startYear', $startYear)
+                ->call('openExpenseForm')
+                ->set('expenseBudgetLineId', (string) $line->id)
+                ->set('expenseDescription', $description)
+                ->set('expenseAmount', '5000')
+                ->call('logExpense');
+        }
+        [$authorized, $declined] = Expense::orderBy('id')->get();
+
+        Livewire::actingAs($chairman)->test(BudgetApprovals::class)->call('authorizeExpense', $authorized->id);
+        Livewire::actingAs($chairman)
+            ->test(BudgetApprovals::class)
+            ->call('openDeclineForm', $declined->id)
+            ->set('declineNote', 'No receipt provided.')
+            ->call('declineExpense');
+
+        Livewire::actingAs($chairman)
+            ->test(BudgetApprovals::class)
+            ->assertViewHas('decisions', fn ($decisions) => $decisions->total() === 4)
+            ->assertSee('Budget Returned')
+            ->assertSee('Budget Approved')
+            ->assertSee('Expense Authorized')
+            ->assertSee('Expense Declined')
+            ->assertSee('Reason: No receipt provided.')
+            ->assertSee($chairman->name)
+            ->set('historyYear', (string) ($startYear + 5))
+            ->assertViewHas('decisions', fn ($decisions) => $decisions->total() === 0)
+            ->set('historyYear', (string) $startYear)
+            ->assertViewHas('decisions', fn ($decisions) => $decisions->total() === 4);
+    }
+
     public function test_expenses_cannot_be_logged_against_an_unapproved_budget(): void
     {
         $treasurer = $this->makeUserWithRole('treasurer');

@@ -356,6 +356,23 @@ class SavingsWithdrawalTest extends TestCase
         $this->assertSame('disbursed', $withdrawal->status);
         $this->assertEquals(5000, (float) $account->fresh()->balance);
         $this->assertSame('withdrawal', $account->fresh()->transactions()->first()->type);
+
+        // Every stage's date (and who acted) is shown on the History tab for record keeping.
+        Livewire::actingAs($treasurer)
+            ->test(WithdrawalsReview::class)
+            ->call('setTab', 'history')
+            ->assertSeeText('Requested: '.$withdrawal->requested_at->format('d M Y, g:i a'))
+            ->assertSeeText('Endorsed: '.$withdrawal->treasurer_reviewed_at->format('d M Y, g:i a'))
+            ->assertSeeText('Authorized: '.$withdrawal->chairman_reviewed_at->format('d M Y, g:i a'))
+            ->assertSeeText('Disbursed: '.$withdrawal->disbursed_at->format('d M Y, g:i a'))
+            // Date filter on History matches the disbursement date.
+            ->set('dateFrom', $withdrawal->disbursed_at->format('Y-m-d'))
+            ->set('dateTo', $withdrawal->disbursed_at->format('Y-m-d'))
+            ->assertViewHas('requests', fn ($r) => $r->total() === 1)
+            ->set('dateTo', $withdrawal->disbursed_at->copy()->subDay()->format('Y-m-d'))
+            ->assertViewHas('requests', fn ($r) => $r->total() === 0)
+            ->call('clearDates')
+            ->assertViewHas('requests', fn ($r) => $r->total() === 1);
     }
 
     public function test_a_recent_voluntary_deposit_cannot_be_withdrawn_within_the_lock_period(): void

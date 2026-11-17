@@ -8,6 +8,29 @@
             <div class="bg-green-100 border border-green-300 text-green-800 rounded-md px-4 py-3 text-sm">{{ session('status') }}</div>
         @endif
 
+        <div class="flex gap-2 text-sm">
+            @foreach (['pending' => 'Pending Review', 'history' => 'History'] as $key => $label)
+                <button wire:click="setTab('{{ $key }}')" class="px-3 py-1.5 rounded-full border {{ $tab === $key ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white dark:bg-gray-800 text-gray-600 border-gray-300' }}">{{ $label }}</button>
+            @endforeach
+        </div>
+
+        @if ($tab === 'history')
+            <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4 flex items-end gap-4 flex-wrap">
+                <div>
+                    <x-input-label for="dateFrom" value="From" />
+                    <x-text-input id="dateFrom" wire:model.live="dateFrom" type="date" class="mt-1 block" />
+                </div>
+                <div>
+                    <x-input-label for="dateTo" value="To" />
+                    <x-text-input id="dateTo" wire:model.live="dateTo" type="date" class="mt-1 block" />
+                </div>
+                @if ($dateFrom !== '' || $dateTo !== '')
+                    <x-secondary-button wire:click="clearDates">Clear dates</x-secondary-button>
+                @endif
+                <p class="text-xs text-gray-500 w-full">Filters by the date each request was approved or rejected.</p>
+            </div>
+        @endif
+
         <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-x-auto">
             <table class="min-w-full text-sm">
                 <thead class="bg-gray-50 dark:bg-gray-700 text-left text-xs uppercase text-gray-500">
@@ -15,9 +38,12 @@
                         <th class="px-4 py-3">Member</th>
                         <th class="px-4 py-3 text-right">Current</th>
                         <th class="px-4 py-3 text-right">Requested</th>
+                        @if ($tab === 'history')
+                            <th class="px-4 py-3 text-right">Approved</th>
+                        @endif
                         <th class="px-4 py-3">Reason</th>
-                        <th class="px-4 py-3">Requested On</th>
-                        <th class="px-4 py-3 text-right">Actions</th>
+                        <th class="px-4 py-3">Dates</th>
+                        <th class="px-4 py-3 text-right">{{ $tab === 'history' ? 'Outcome' : 'Actions' }}</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -28,15 +54,30 @@
                             </td>
                             <td class="px-4 py-3 text-right">₦{{ number_format((float) $req->current_amount, 2) }}</td>
                             <td class="px-4 py-3 text-right font-medium">₦{{ number_format((float) $req->requested_amount, 2) }}</td>
-                            <td class="px-4 py-3 text-gray-500 max-w-[16rem] truncate">{{ $req->reason }}</td>
-                            <td class="px-4 py-3">{{ $req->requested_at->format('d M Y') }}</td>
+                            @if ($tab === 'history')
+                                <td class="px-4 py-3 text-right">{{ $req->approved_amount ? '₦'.number_format((float) $req->approved_amount, 2) : '—' }}</td>
+                            @endif
+                            <td class="px-4 py-3 text-gray-500 max-w-[16rem] truncate" title="{{ $req->reason }}">{{ $req->reason }}</td>
+                            <td class="px-4 py-3 text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                                <div><span class="font-medium text-gray-800 dark:text-gray-200">Requested:</span> {{ $req->requested_at ? $req->requested_at->format('d M Y, g:i a') : '—' }}</div>
+                                @if ($req->reviewed_at)
+                                    <div><span class="font-medium text-gray-800 dark:text-gray-200">{{ ucfirst($req->status) }}:</span> {{ $req->reviewed_at->format('d M Y, g:i a') }}@if ($req->reviewedBy) — {{ $req->reviewedBy->name }}@endif</div>
+                                @endif
+                            </td>
                             <td class="px-4 py-3 text-right space-x-2">
-                                <button wire:click="openApprove({{ $req->id }})" class="text-green-700 hover:underline">Approve</button>
-                                <button wire:click="openReject({{ $req->id }})" class="text-red-700 hover:underline">Reject</button>
+                                @if ($tab === 'history')
+                                    <span class="{{ $req->status === 'approved' ? 'text-green-700' : 'text-red-700' }} font-medium">{{ ucfirst($req->status) }}</span>
+                                    @if ($req->review_note)
+                                        <div class="text-xs text-gray-500 text-right max-w-[16rem] ml-auto">{{ $req->review_note }}</div>
+                                    @endif
+                                @else
+                                    <button wire:click="openApprove({{ $req->id }})" class="text-green-700 hover:underline">Approve</button>
+                                    <button wire:click="openReject({{ $req->id }})" class="text-red-700 hover:underline">Reject</button>
+                                @endif
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-4 py-6 text-center text-gray-500">No pending contribution change requests.</td></tr>
+                        <tr><td colspan="7" class="px-4 py-6 text-center text-gray-500">{{ $tab === 'history' ? 'No decided contribution change requests in this view.' : 'No pending contribution change requests.' }}</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -49,7 +90,12 @@
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 px-4">
             <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
                 <h3 class="font-semibold text-lg mb-1">Approve Contribution Change</h3>
-                <p class="text-sm text-gray-500 mb-4">{{ $activeRequest->member->full_name }} — current ₦{{ number_format((float) $activeRequest->current_amount, 2) }}</p>
+                <p class="text-sm text-gray-500 mb-4">
+                    {{ $activeRequest->member->full_name }} — current ₦{{ number_format((float) $activeRequest->current_amount, 2) }}
+                    @if ($activeRequest->requested_at)
+                        <span class="block">Requested on {{ $activeRequest->requested_at->format('d M Y, g:i a') }}</span>
+                    @endif
+                </p>
 
                 <div class="space-y-4">
                     <div>

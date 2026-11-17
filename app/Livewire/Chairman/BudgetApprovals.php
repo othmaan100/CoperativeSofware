@@ -8,6 +8,7 @@ use App\Models\Expense;
 use App\Models\User;
 use App\Notifications\BudgetApprovedNotification;
 use App\Notifications\ExpenseAuthorizationDecisionNotification;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Notification;
 use Livewire\Attributes\Layout;
@@ -21,6 +22,11 @@ class BudgetApprovals extends Component
     public string $declineNote = '';
 
     public ?int $decliningExpenseId = null;
+
+    /** Financial-year start year to filter the decision history by; '' = all years. */
+    public string $historyYear = '';
+
+    protected const DECISION_ACTIONS = ['budget.approved', 'budget.returned', 'expense.authorized', 'expense.declined'];
 
     public function mount(): void
     {
@@ -109,12 +115,53 @@ class BudgetApprovals extends Component
         session()->flash('status', "Expense {$expense->expense_no} declined.");
     }
 
+    public function updatedHistoryYear(): void
+    {
+        $this->resetPage('historyPage');
+    }
+
+    /**
+     * Past budget and expense decisions, read from the activity log — the
+     * only place a budget being returned for revision is recorded, since
+     * the budget row itself just goes back to draft. Filtered by the
+     * financial year of the budget each decision belongs to.
+     */
+    protected function decisionHistory()
+    {
+        $year = $this->historyYear === '' ? null : (int) $this->historyYear;
+
+        return ActivityLog::query()
+            ->whereIn('action', self::DECISION_ACTIONS)
+            ->whereHasMorph('subject', [Budget::class, Expense::class], function ($query, string $type) use ($year) {
+                if ($year === null) {
+                    return;
+                }
+                if ($type === Budget::class) {
+                    $query->where('fy_start_year', $year);
+                } else {
+                    $query->whereHas('budgetLine.budget', fn ($b) => $b->where('fy_start_year', $year));
+                }
+            })
+            ->with(['subject' => fn (MorphTo $morph) => $morph->morphWith([
+                Budget::class => ['lines'],
+                Expense::class => ['budgetLine.budget'],
+            ])])
+            ->latest('created_at')
+            ->latest('id')
+            ->paginate(15, pageName: 'historyPage');
+    }
+
     #[Layout('layouts.app')]
     public function render()
     {
+        $historyYears = Budget::query()->distinct()->pluck('fy_start_year')->all();
+        rsort($historyYears);
+
         return view('livewire.chairman.budget-approvals', [
             'pendingBudgets' => Budget::query()->where('status', Budget::STATUS_PENDING_APPROVAL)->with('lines')->latest('fy_start_year')->get(),
             'pendingExpenses' => Expense::query()->where('status', Expense::STATUS_PENDING)->with(['budgetLine.budget', 'initiatedBy'])->latest()->paginate(15),
+            'decisions' => $this->decisionHistory(),
+            'historyYears' => $historyYears,
         ]);
     }
 }

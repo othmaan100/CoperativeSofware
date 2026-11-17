@@ -22,9 +22,46 @@ class ContributionChangeRequests extends Component
 
     public string $review_note = '';
 
+    public string $tab = 'pending';
+
+    /** History tab date range (Y-m-d), matched against the date each request was decided. */
+    public string $dateFrom = '';
+
+    public string $dateTo = '';
+
     public function mount(): void
     {
         abort_unless(Auth::user()->can('adjust_contribution'), 403);
+    }
+
+    public function setTab(string $tab): void
+    {
+        $this->tab = $tab === 'history' ? 'history' : 'pending';
+        $this->resetPage();
+    }
+
+    public function updatedDateFrom(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedDateTo(): void
+    {
+        $this->resetPage();
+    }
+
+    public function clearDates(): void
+    {
+        $this->reset(['dateFrom', 'dateTo']);
+        $this->resetPage();
+    }
+
+    /** Returns the date as Y-m-d if it is a real calendar date, otherwise null (filter ignored). */
+    protected function validDate(string $value): ?string
+    {
+        $date = \DateTime::createFromFormat('!Y-m-d', $value);
+
+        return $date && $date->format('Y-m-d') === $value ? $value : null;
     }
 
     public function openApprove(int $id): void
@@ -139,11 +176,24 @@ class ContributionChangeRequests extends Component
     #[Layout('layouts.app')]
     public function render()
     {
+        $query = ContributionChangeRequest::with(['member', 'reviewedBy']);
+
+        if ($this->tab === 'history') {
+            // History: decided requests, newest decision first, optionally within a date range.
+            $query->whereIn('status', ['approved', 'rejected']);
+            if ($from = $this->validDate($this->dateFrom)) {
+                $query->whereDate('reviewed_at', '>=', $from);
+            }
+            if ($to = $this->validDate($this->dateTo)) {
+                $query->whereDate('reviewed_at', '<=', $to);
+            }
+            $query->latest('reviewed_at');
+        } else {
+            $query->where('status', 'pending')->latest('requested_at');
+        }
+
         return view('livewire.treasurer.contribution-change-requests', [
-            'requests' => ContributionChangeRequest::with('member')
-                ->where('status', 'pending')
-                ->latest('requested_at')
-                ->paginate(15),
+            'requests' => $query->latest('id')->paginate(15),
             'activeRequest' => $this->activeId ? ContributionChangeRequest::find($this->activeId) : null,
         ]);
     }

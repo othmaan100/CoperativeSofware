@@ -293,6 +293,23 @@ class MemberManagementTest extends TestCase
         $this->assertEquals(8000, (float) $request->approved_amount);
         $this->assertEquals(10000, (float) $request->requested_amount, 'The original request must remain on record even though a different amount was approved.');
         $this->assertEquals(8000, (float) $member->fresh()->approved_monthly_contribution, 'The Treasurer-approved amount, not the requested one, must take effect.');
+
+        // The decided request stays on record in the History tab, with its dates, and the date filter applies.
+        $reviewedOn = $request->reviewed_at->format('Y-m-d');
+        Livewire::actingAs($treasurer)
+            ->test(\App\Livewire\Treasurer\ContributionChangeRequests::class)
+            ->assertViewHas('requests', fn ($r) => $r->total() === 0) // no longer pending
+            ->call('setTab', 'history')
+            ->assertViewHas('requests', fn ($r) => $r->total() === 1)
+            ->assertSeeText('Requested: '.$request->requested_at->format('d M Y, g:i a'))
+            ->assertSeeText('Approved: '.$request->reviewed_at->format('d M Y, g:i a').' — '.$treasurer->name)
+            ->assertSeeText('Capped per Exco policy on maximum single increase.')
+            ->set('dateFrom', $reviewedOn)
+            ->set('dateTo', $reviewedOn)
+            ->assertViewHas('requests', fn ($r) => $r->total() === 1)
+            ->set('dateFrom', $request->reviewed_at->copy()->addDay()->format('Y-m-d'))
+            ->set('dateTo', '')
+            ->assertViewHas('requests', fn ($r) => $r->total() === 0);
     }
 
     public function test_contribution_change_rejection_leaves_amount_unchanged(): void

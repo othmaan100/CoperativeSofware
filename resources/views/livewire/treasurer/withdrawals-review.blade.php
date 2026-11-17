@@ -14,6 +14,23 @@
             @endforeach
         </div>
 
+        @if ($tab === 'history')
+            <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4 flex items-end gap-4 flex-wrap">
+                <div>
+                    <x-input-label for="dateFrom" value="From" />
+                    <x-text-input id="dateFrom" wire:model.live="dateFrom" type="date" class="mt-1 block" />
+                </div>
+                <div>
+                    <x-input-label for="dateTo" value="To" />
+                    <x-text-input id="dateTo" wire:model.live="dateTo" type="date" class="mt-1 block" />
+                </div>
+                @if ($dateFrom !== '' || $dateTo !== '')
+                    <x-secondary-button wire:click="clearDates">Clear dates</x-secondary-button>
+                @endif
+                <p class="text-xs text-gray-500 w-full">Filters by the date each request was finished — disbursed, rejected or declined.</p>
+            </div>
+        @endif
+
         <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-x-auto">
             <table class="min-w-full text-sm">
                 <thead class="bg-gray-50 dark:bg-gray-700 text-left text-xs uppercase text-gray-500">
@@ -24,11 +41,18 @@
                         <th class="px-4 py-3 text-right">Requested</th>
                         <th class="px-4 py-3 text-right">Approved</th>
                         <th class="px-4 py-3">Status</th>
+                        <th class="px-4 py-3">Dates</th>
                         <th class="px-4 py-3 text-right">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                     @forelse ($requests as $req)
+                        @php
+                            // Imported records only carry the real withdrawal date, not a real time of day.
+                            $fmt = fn ($date) => $date->format($req->is_legacy_import ? 'd M Y' : 'd M Y, g:i a');
+                            $treasurerLabel = $req->status === 'treasurer_rejected' ? 'Rejected' : 'Endorsed';
+                            $chairmanLabel = $req->status === 'chairman_declined' ? 'Declined' : 'Authorized';
+                        @endphp
                         <tr wire:key="wd-{{ $req->id }}">
                             <td class="px-4 py-3">
                                 {{ $req->member->full_name }}
@@ -46,7 +70,24 @@
                             <td class="px-4 py-3">{{ $req->account->product->name }}</td>
                             <td class="px-4 py-3 text-right">₦{{ number_format((float) $req->requested_amount, 2) }}</td>
                             <td class="px-4 py-3 text-right">{{ $req->approved_amount ? '₦'.number_format((float) $req->approved_amount, 2) : '—' }}</td>
-                            <td class="px-4 py-3">{{ ucwords(str_replace('_', ' ', $req->status)) }}</td>
+                            <td class="px-4 py-3">
+                                {{ ucwords(str_replace('_', ' ', $req->status)) }}
+                                @if ($req->is_legacy_import)
+                                    <div class="text-xs text-gray-500">Imported record</div>
+                                @endif
+                            </td>
+                            <td class="px-4 py-3 text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                                <div><span class="font-medium text-gray-800 dark:text-gray-200">Requested:</span> {{ $req->requested_at ? $fmt($req->requested_at) : '—' }}</div>
+                                @if ($req->treasurer_reviewed_at && ! $req->is_legacy_import)
+                                    <div><span class="font-medium text-gray-800 dark:text-gray-200">{{ $treasurerLabel }}:</span> {{ $fmt($req->treasurer_reviewed_at) }}@if ($req->treasurerReviewedBy) — {{ $req->treasurerReviewedBy->name }}@endif</div>
+                                @endif
+                                @if ($req->chairman_reviewed_at)
+                                    <div><span class="font-medium text-gray-800 dark:text-gray-200">{{ $chairmanLabel }}:</span> {{ $fmt($req->chairman_reviewed_at) }}@if ($req->chairmanReviewedBy) — {{ $req->chairmanReviewedBy->name }}@endif</div>
+                                @endif
+                                @if ($req->disbursed_at)
+                                    <div><span class="font-medium text-gray-800 dark:text-gray-200">Disbursed:</span> {{ $fmt($req->disbursed_at) }}@if ($req->disbursedBy) — {{ $req->disbursedBy->name }}@endif</div>
+                                @endif
+                            </td>
                             <td class="px-4 py-3 text-right space-x-2">
                                 @if ($tab === 'pending')
                                     <button wire:click="openReview({{ $req->id }})" class="text-emerald-600 hover:underline">Review</button>
@@ -57,7 +98,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="px-4 py-6 text-center text-gray-500">No requests in this view.</td></tr>
+                        <tr><td colspan="8" class="px-4 py-6 text-center text-gray-500">No requests in this view.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -73,6 +114,9 @@
                 <p class="text-sm text-gray-500 mb-4">
                     {{ $activeRequest->member->full_name }} — Available ₦{{ number_format($activeRequest->account->availableBalance($activeRequest->id), 2) }}
                     (of ₦{{ number_format((float) $activeRequest->account->balance, 2) }} balance)
+                    @if ($activeRequest->requested_at)
+                        <span class="block">Requested on {{ $activeRequest->requested_at->format('d M Y, g:i a') }}</span>
+                    @endif
                 </p>
 
                 <div class="space-y-4">

@@ -25,6 +25,11 @@ class WithdrawalsReview extends Component
 
     public string $treasurer_note = '';
 
+    /** History tab date range (Y-m-d), matched against the date each request was finished. */
+    public string $dateFrom = '';
+
+    public string $dateTo = '';
+
     public function mount(): void
     {
         abort_unless(Auth::user()->can('treasurer_review_withdrawal'), 403);
@@ -34,6 +39,30 @@ class WithdrawalsReview extends Component
     {
         $this->tab = $tab;
         $this->resetPage();
+    }
+
+    public function updatedDateFrom(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedDateTo(): void
+    {
+        $this->resetPage();
+    }
+
+    public function clearDates(): void
+    {
+        $this->reset(['dateFrom', 'dateTo']);
+        $this->resetPage();
+    }
+
+    /** Returns the date as Y-m-d if it is a real calendar date, otherwise null (filter ignored). */
+    protected function validDate(string $value): ?string
+    {
+        $date = \DateTime::createFromFormat('!Y-m-d', $value);
+
+        return $date && $date->format('Y-m-d') === $value ? $value : null;
     }
 
     public function openReview(int $id): void
@@ -188,7 +217,7 @@ class WithdrawalsReview extends Component
     #[Layout('layouts.app')]
     public function render()
     {
-        $query = WithdrawalRequest::with(['member', 'account.product']);
+        $query = WithdrawalRequest::with(['member', 'account.product', 'initiatedBy', 'treasurerReviewedBy', 'chairmanReviewedBy', 'disbursedBy']);
 
         match ($this->tab) {
             'disbursement' => $query->where('status', 'chairman_authorized'),
@@ -196,8 +225,24 @@ class WithdrawalsReview extends Component
             default => $query->where('status', 'pending'),
         };
 
+        // History is ordered by when each request was finished (disbursed or
+        // decided), so imported legacy withdrawals fall into their real place
+        // in time rather than all bunching at the date of the import.
+        if ($this->tab === 'history') {
+            $completedAt = 'COALESCE(disbursed_at, chairman_reviewed_at, treasurer_reviewed_at, requested_at)';
+            if ($from = $this->validDate($this->dateFrom)) {
+                $query->whereRaw("DATE({$completedAt}) >= ?", [$from]);
+            }
+            if ($to = $this->validDate($this->dateTo)) {
+                $query->whereRaw("DATE({$completedAt}) <= ?", [$to]);
+            }
+            $query->orderByRaw("{$completedAt} DESC");
+        } else {
+            $query->latest('requested_at');
+        }
+
         return view('livewire.treasurer.withdrawals-review', [
-            'requests' => $query->latest('requested_at')->paginate(15),
+            'requests' => $query->latest('id')->paginate(15),
             'activeRequest' => $this->activeId ? WithdrawalRequest::with('account')->find($this->activeId) : null,
         ]);
     }
