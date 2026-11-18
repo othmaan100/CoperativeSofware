@@ -373,6 +373,19 @@ class SavingsWithdrawalTest extends TestCase
             ->assertViewHas('requests', fn ($r) => $r->total() === 0)
             ->call('clearDates')
             ->assertViewHas('requests', fn ($r) => $r->total() === 1);
+
+        // The Chairman's History tab shows the same dates and supports the same filter.
+        Livewire::actingAs($chairman)
+            ->test(\App\Livewire\Chairman\WithdrawalsAuthorization::class)
+            ->call('setTab', 'history')
+            ->assertSeeText('Requested: '.$withdrawal->requested_at->format('d M Y, g:i a'))
+            ->assertSeeText('Endorsed: '.$withdrawal->treasurer_reviewed_at->format('d M Y, g:i a'))
+            ->assertSeeText('Authorized: '.$withdrawal->chairman_reviewed_at->format('d M Y, g:i a').' — '.$chairman->name)
+            ->assertSeeText('Disbursed: '.$withdrawal->disbursed_at->format('d M Y, g:i a'))
+            ->set('dateFrom', $withdrawal->disbursed_at->copy()->addDay()->format('Y-m-d'))
+            ->assertViewHas('requests', fn ($r) => $r->total() === 0)
+            ->call('clearDates')
+            ->assertViewHas('requests', fn ($r) => $r->total() === 1);
     }
 
     public function test_a_recent_voluntary_deposit_cannot_be_withdrawn_within_the_lock_period(): void

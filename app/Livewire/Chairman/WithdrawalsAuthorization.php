@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Chairman;
 
+use App\Livewire\Concerns\FiltersByDateRange;
 use App\Models\ActivityLog;
 use App\Models\WithdrawalCondition;
 use App\Models\WithdrawalRequest;
@@ -12,6 +13,7 @@ use Livewire\WithPagination;
 
 class WithdrawalsAuthorization extends Component
 {
+    use FiltersByDateRange;
     use WithPagination;
 
     public string $tab = 'pending';
@@ -118,15 +120,26 @@ class WithdrawalsAuthorization extends Component
     #[Layout('layouts.app')]
     public function render()
     {
-        $query = WithdrawalRequest::with(['member', 'account.product']);
+        $query = WithdrawalRequest::with(['member', 'account.product', 'treasurerReviewedBy', 'chairmanReviewedBy', 'disbursedBy']);
 
-        match ($this->tab) {
-            'history' => $query->whereIn('status', ['disbursed', 'chairman_authorized', 'chairman_declined']),
-            default => $query->where('status', 'treasurer_approved'),
-        };
+        if ($this->tab === 'history') {
+            // Ordered and filtered by when each request was finished, so imported
+            // legacy withdrawals fall into their real place in time.
+            $completedAt = 'COALESCE(disbursed_at, chairman_reviewed_at, treasurer_reviewed_at, requested_at)';
+            $query->whereIn('status', ['disbursed', 'chairman_authorized', 'chairman_declined']);
+            if ($from = $this->validDate($this->dateFrom)) {
+                $query->whereRaw("DATE({$completedAt}) >= ?", [$from]);
+            }
+            if ($to = $this->validDate($this->dateTo)) {
+                $query->whereRaw("DATE({$completedAt}) <= ?", [$to]);
+            }
+            $query->orderByRaw("{$completedAt} DESC");
+        } else {
+            $query->where('status', 'treasurer_approved')->latest('treasurer_reviewed_at');
+        }
 
         return view('livewire.chairman.withdrawals-authorization', [
-            'requests' => $query->latest('treasurer_reviewed_at')->paginate(15),
+            'requests' => $query->latest('id')->paginate(15),
             'activeRequest' => $this->activeId ? WithdrawalRequest::with('account')->find($this->activeId) : null,
         ]);
     }

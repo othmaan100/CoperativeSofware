@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Treasurer;
 
+use App\Livewire\Concerns\FiltersByDateRange;
 use App\Models\ActivityLog;
 use App\Models\ContributionChangeRequest;
 use App\Models\Setting;
@@ -12,6 +13,7 @@ use Livewire\WithPagination;
 
 class ContributionChangeRequests extends Component
 {
+    use FiltersByDateRange;
     use WithPagination;
 
     public ?int $activeId = null;
@@ -24,11 +26,6 @@ class ContributionChangeRequests extends Component
 
     public string $tab = 'pending';
 
-    /** History tab date range (Y-m-d), matched against the date each request was decided. */
-    public string $dateFrom = '';
-
-    public string $dateTo = '';
-
     public function mount(): void
     {
         abort_unless(Auth::user()->can('adjust_contribution'), 403);
@@ -38,30 +35,6 @@ class ContributionChangeRequests extends Component
     {
         $this->tab = $tab === 'history' ? 'history' : 'pending';
         $this->resetPage();
-    }
-
-    public function updatedDateFrom(): void
-    {
-        $this->resetPage();
-    }
-
-    public function updatedDateTo(): void
-    {
-        $this->resetPage();
-    }
-
-    public function clearDates(): void
-    {
-        $this->reset(['dateFrom', 'dateTo']);
-        $this->resetPage();
-    }
-
-    /** Returns the date as Y-m-d if it is a real calendar date, otherwise null (filter ignored). */
-    protected function validDate(string $value): ?string
-    {
-        $date = \DateTime::createFromFormat('!Y-m-d', $value);
-
-        return $date && $date->format('Y-m-d') === $value ? $value : null;
     }
 
     public function openApprove(int $id): void
