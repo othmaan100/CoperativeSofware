@@ -312,6 +312,63 @@ class DividendTest extends TestCase
             ->assertSee('FY 2025');
     }
 
+    public function test_treasurer_can_enter_legacy_profit_which_counts_towards_the_period_profit(): void
+    {
+        $treasurer = $this->makeUserWithRole('treasurer');
+        $chairman = $this->makeUserWithRole('chairman');
+        $period = DividendPeriod::create([
+            'label' => 'FY 2025',
+            'fy_start_date' => '2025-01-01',
+            'fy_end_date' => '2025-12-31',
+            'status' => DividendPeriod::STATUS_OPEN,
+            'opened_by' => $treasurer->id,
+        ]);
+
+        $treasurerPage = Livewire::actingAs($treasurer)
+            ->test(DividendPeriods::class)
+            ->call('openLegacyProfits', $period->id)
+            ->call('addLegacyProfit')
+            ->assertHasErrors(['legacy_category', 'legacy_amount'])
+            ->set('legacy_category', 'loan_interest')
+            ->set('legacy_amount', '80000')
+            ->set('legacy_description', 'Jan–Jun manual ledger')
+            ->call('addLegacyProfit')
+            ->assertHasNoErrors()
+            ->set('legacy_category', 'registration_fees')
+            ->set('legacy_amount', '40000')
+            ->call('addLegacyProfit')
+            ->assertSeeText('Total profit for this period');
+
+        $this->assertSame(['system' => 0.0, 'legacy' => 120000.0, 'total' => 120000.0], $period->fresh()->profitBreakdown());
+        $this->assertDatabaseHas('activity_logs', ['action' => 'dividend.legacy_profit_added', 'causer_id' => $treasurer->id]);
+
+        // An entry can be removed while the period is open.
+        $treasurerPage->call('removeLegacyProfit', $period->legacyProfits()->where('category', 'registration_fees')->value('id'));
+        $this->assertSame(80000.0, $period->fresh()->distributableProfit());
+
+        // The Chairman's declare form uses the combined profit, and the snapshot keeps it.
+        Livewire::actingAs($chairman)
+            ->test(DividendDeclarations::class)
+            ->call('openDeclareForm', $period->id)
+            ->assertSeeText('Legacy: Loan interest profit — Jan–Jun manual ledger')
+            ->assertViewHas('preview', fn ($p) => $p['profit'] === 80000.0)
+            ->set('share_dividend_rate_pct', '5')
+            ->set('savings_interest_rate_pct', '2')
+            ->call('saveDeclare');
+        $this->assertEquals(80000, (float) $period->fresh()->distributable_profit_snapshot);
+
+        // Once declared, the legacy profit is locked.
+        Livewire::actingAs($treasurer)
+            ->test(DividendPeriods::class)
+            ->call('openLegacyProfits', $period->id)
+            ->assertSeeText('so its profit is fixed')
+            ->set('legacy_category', 'other_income')
+            ->set('legacy_amount', '1000')
+            ->call('addLegacyProfit')
+            ->assertStatus(400);
+        $this->assertSame(1, $period->legacyProfits()->count());
+    }
+
     public function test_recalculating_a_declared_period_replaces_previous_allocations(): void
     {
         $treasurer = $this->makeUserWithRole('treasurer');

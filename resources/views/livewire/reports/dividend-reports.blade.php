@@ -14,7 +14,7 @@
                         <th class="px-4 py-3 text-right">Savings Rate</th>
                         <th class="px-4 py-3 text-right">Total Dividend</th>
                         <th class="px-4 py-3 text-right">Total Interest</th>
-                        <th class="px-4 py-3 text-right">Tracked Profit</th>
+                        <th class="px-4 py-3 text-right">Profit (incl. legacy)</th>
                         <th class="px-4 py-3">Status</th>
                     </tr>
                 </thead>
@@ -30,7 +30,7 @@
                             <td class="px-4 py-3 text-right">
                                 {{ $period->distributable_profit_snapshot !== null ? '₦'.number_format((float) $period->distributable_profit_snapshot, 2) : '—' }}
                                 @if ($period->distributable_profit_snapshot !== null && $period->total_share_dividend_amount !== null && (((float) $period->total_share_dividend_amount + (float) $period->total_savings_interest_amount) > (float) $period->distributable_profit_snapshot))
-                                    <div class="text-xs text-amber-600 mt-0.5">Exceeds tracked profit</div>
+                                    <div class="text-xs text-amber-600 mt-0.5">Payout exceeds profit</div>
                                 @endif
                             </td>
                             <td class="px-4 py-3">{{ ucfirst($period->status) }}</td>

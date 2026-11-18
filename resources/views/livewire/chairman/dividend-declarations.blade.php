@@ -123,8 +123,17 @@
                 <p class="text-sm text-gray-500 mb-4">{{ $activePeriod->fy_start_date->format('d M Y') }} – {{ $activePeriod->fy_end_date->format('d M Y') }}</p>
 
                 <div class="bg-gray-50 dark:bg-gray-700/50 rounded-md p-3 mb-4 text-sm">
-                    <p class="text-gray-500">Loan (incl. commodity) + registration fee profit booked in this range:</p>
+                    <p class="text-gray-500">Profit available for this period:</p>
                     <p class="font-semibold text-lg">₦{{ number_format((float) $distributableEstimate, 2) }}</p>
+                    <div class="text-xs text-gray-600 dark:text-gray-400 mt-1 space-y-0.5">
+                        <div class="flex justify-between gap-4"><span>Tracked in this system (loan incl. commodity + registration fee profit)</span><span class="whitespace-nowrap">₦{{ number_format($profitBreakdown['system'], 2) }}</span></div>
+                        @foreach ($legacyProfits as $entry)
+                            <div class="flex justify-between gap-4"><span>Legacy: {{ $entry->categoryLabel() }}{{ $entry->description ? ' — '.$entry->description : '' }}</span><span class="whitespace-nowrap">₦{{ number_format((float) $entry->amount, 2) }}</span></div>
+                        @endforeach
+                        @if ($legacyProfits->isEmpty())
+                            <div class="text-gray-500">No legacy profit entered by the Treasurer for this period.</div>
+                        @endif
+                    </div>
                     <p class="text-xs text-gray-500 mt-1">Advisory only — this is booked profit, not necessarily cash already collected, and doesn't include anything outside this system. The Treasurer will see the actual declared total compared against this figure after calculation.</p>
                 </div>
 

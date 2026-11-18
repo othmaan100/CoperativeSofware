@@ -94,7 +94,7 @@ class DividendDeclarations extends Component
             'savings_interest_rate_pct' => ['required', 'numeric', 'min:0', 'max:100'],
         ]);
 
-        $snapshot = DividendPeriod::distributableProfitFor($period->fy_start_date, $period->fy_end_date);
+        $snapshot = $period->distributableProfit(); // system-tracked + legacy entries
 
         $period->update([
             'share_dividend_rate_pct' => $validated['share_dividend_rate_pct'],
@@ -120,13 +120,14 @@ class DividendDeclarations extends Component
     public function render()
     {
         $activePeriod = $this->activePeriodId ? DividendPeriod::find($this->activePeriodId) : null;
-        $distributableEstimate = $activePeriod
-            ? DividendPeriod::distributableProfitFor($activePeriod->fy_start_date, $activePeriod->fy_end_date)
-            : null;
+        $profitBreakdown = $activePeriod?->profitBreakdown();
+        $distributableEstimate = $profitBreakdown['total'] ?? null;
 
         return view('livewire.chairman.dividend-declarations', [
             'periods' => DividendPeriod::query()->latest('fy_start_date')->paginate(15),
             'activePeriod' => $activePeriod,
+            'profitBreakdown' => $profitBreakdown,
+            'legacyProfits' => $activePeriod ? $activePeriod->legacyProfits()->orderBy('id')->get() : collect(),
             'distributableEstimate' => $distributableEstimate,
             'preview' => $activePeriod ? $this->payoutPreview((float) $distributableEstimate) : null,
         ]);

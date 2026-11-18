@@ -54,6 +54,7 @@
                                 </span>
                             </td>
                             <td class="px-4 py-3 text-right space-x-2">
+                                <button wire:click="openLegacyProfits({{ $period->id }})" class="text-gray-600 hover:underline">Legacy Profit</button>
                                 @if ($period->status === 'declared' || $period->status === 'calculated')
                                     <button wire:click="calculate({{ $period->id }})" wire:confirm="{{ $period->status === 'calculated' ? 'Recalculate this period? Existing (unposted) allocations will be replaced.' : 'Calculate dividend/interest allocations for every active member?' }}" class="text-emerald-600 hover:underline">
                                         {{ $period->status === 'calculated' ? 'Recalculate' : 'Calculate' }}
@@ -97,6 +98,99 @@
 
         {{ $periods->links() }}
     </div>
+
+    @if ($legacyPeriod)
+        @php $legacyEditable = $legacyPeriod->status === 'open'; @endphp
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 px-4">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-xl w-full p-6 max-h-[90vh] overflow-y-auto">
+                <h3 class="font-semibold text-lg mb-1">Legacy Profit — {{ $legacyPeriod->label }}</h3>
+                <p class="text-sm text-gray-500 mb-4">
+                    Enter profit for {{ $legacyPeriod->fy_start_date->format('d M Y') }} – {{ $legacyPeriod->fy_end_date->format('d M Y') }}
+                    that was earned in the old (manual) records and so is not tracked in this system.
+                    It is added to the profit the Chairman sees when declaring rates, and to the payout checks.
+                    Only enter profit that is <strong>not</strong> already in this system, so nothing is counted twice.
+                </p>
+
+                @if (session('legacy_status'))
+                    <div class="bg-green-100 border border-green-300 text-green-800 rounded-md px-3 py-2 text-sm mb-3">{{ session('legacy_status') }}</div>
+                @endif
+
+                <table class="min-w-full text-sm mb-4">
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                        <tr>
+                            <td class="py-1.5">Tracked in this system <span class="block text-xs text-gray-500">Loan (incl. commodity) + registration fee profit</span></td>
+                            <td class="py-1.5 text-right whitespace-nowrap">₦{{ number_format($legacyBreakdown['system'], 2) }}</td>
+                            <td></td>
+                        </tr>
+                        @foreach ($legacyPeriod->legacyProfits as $entry)
+                            <tr wire:key="legacy-{{ $entry->id }}">
+                                <td class="py-1.5">
+                                    Legacy: {{ $entry->categoryLabel() }}
+                                    <span class="block text-xs text-gray-500">
+                                        {{ $entry->description ? $entry->description.' · ' : '' }}entered {{ $entry->created_at->format('d M Y, g:i a') }}{{ $entry->enteredBy ? ' by '.$entry->enteredBy->name : '' }}
+                                    </span>
+                                </td>
+                                <td class="py-1.5 text-right whitespace-nowrap">₦{{ number_format((float) $entry->amount, 2) }}</td>
+                                <td class="py-1.5 text-right">
+                                    @if ($legacyEditable)
+                                        <button wire:click="removeLegacyProfit({{ $entry->id }})" wire:confirm="Remove this legacy profit entry?" class="text-red-700 hover:underline text-xs">Remove</button>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                        <tr class="font-semibold">
+                            <td class="py-1.5">Total profit for this period</td>
+                            <td class="py-1.5 text-right whitespace-nowrap">₦{{ number_format($legacyBreakdown['total'], 2) }}</td>
+                            <td></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                @if ($legacyEditable)
+                    <div class="border-t border-gray-100 dark:border-gray-700 pt-4 space-y-3">
+                        <h4 class="font-semibold text-sm">Add legacy profit</h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <x-input-label for="legacy_category" value="Type" />
+                                <select id="legacy_category" wire:model="legacy_category" class="mt-1 block w-full border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 rounded-md shadow-sm text-sm">
+                                    <option value="">Select…</option>
+                                    @foreach (\App\Models\DividendLegacyProfit::CATEGORIES as $key => $label)
+                                        <option value="{{ $key }}">{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                                <x-input-error :messages="$errors->get('legacy_category')" class="mt-1" />
+                            </div>
+                            <div>
+                                <x-input-label for="legacy_amount" value="Profit amount (₦)" />
+                                <x-text-input id="legacy_amount" wire:model="legacy_amount" type="number" step="0.01" min="0" class="mt-1 block w-full" />
+                                <x-input-error :messages="$errors->get('legacy_amount')" class="mt-1" />
+                            </div>
+                        </div>
+                        <div>
+                            <x-input-label for="legacy_description" value="Description (optional)" />
+                            <x-text-input id="legacy_description" wire:model="legacy_description" type="text" class="mt-1 block w-full" placeholder="e.g. Loan interest Jan–Jun from manual ledger" />
+                            <x-input-error :messages="$errors->get('legacy_description')" class="mt-1" />
+                        </div>
+                        <p class="text-xs text-gray-500">Enter the <strong>profit</strong> only — e.g. the profit share of loan interest or registration fees, not the full amount collected.</p>
+                        <div class="flex justify-end">
+                            <x-primary-button wire:click="addLegacyProfit" wire:loading.attr="disabled">Add</x-primary-button>
+                        </div>
+                    </div>
+                @else
+                    <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-3 py-2 text-xs">
+                        Rates have already been {{ $legacyPeriod->status === 'posted' ? 'declared and posted' : 'declared' }} for this period, so its profit is fixed.
+                        @if ($legacyPeriod->status !== 'posted')
+                            To change it, use <strong>Return to Chairman</strong> first, then add or remove legacy profit.
+                        @endif
+                    </div>
+                @endif
+
+                <div class="flex justify-end mt-6">
+                    <x-secondary-button wire:click="closeLegacyProfits">Close</x-secondary-button>
+                </div>
+            </div>
+        </div>
+    @endif
 
     @if ($returningPeriodId)
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 px-4">

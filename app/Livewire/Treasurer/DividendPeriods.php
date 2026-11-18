@@ -3,6 +3,7 @@
 namespace App\Livewire\Treasurer;
 
 use App\Models\ActivityLog;
+use App\Models\DividendLegacyProfit;
 use App\Models\DividendPeriod;
 use App\Models\Setting;
 use Carbon\Carbon;
@@ -26,6 +27,15 @@ class DividendPeriods extends Component
     public ?int $returningPeriodId = null;
 
     public string $return_reason = '';
+
+    // Legacy profit entry (profit from the old/manual records)
+    public ?int $legacyPeriodId = null;
+
+    public string $legacy_category = '';
+
+    public string $legacy_amount = '';
+
+    public string $legacy_description = '';
 
     public function mount(): void
     {
@@ -107,6 +117,81 @@ class DividendPeriods extends Component
         session()->flash('status', "Calculated {$period->allocations()->count()} member allocation(s). Review before posting.");
     }
 
+    public function openLegacyProfits(int $periodId): void
+    {
+        abort_unless(Auth::user()->can('manage_dividend_periods'), 403);
+
+        DividendPeriod::findOrFail($periodId);
+        $this->legacyPeriodId = $periodId;
+        $this->reset(['legacy_category', 'legacy_amount', 'legacy_description']);
+        $this->resetErrorBag();
+    }
+
+    public function closeLegacyProfits(): void
+    {
+        $this->legacyPeriodId = null;
+        $this->reset(['legacy_category', 'legacy_amount', 'legacy_description']);
+    }
+
+    /**
+     * Legacy profit can only change while the period is still open — once
+     * rates are declared, the profit they were judged against is fixed.
+     * (Return the period to the Chairman to change it after that.)
+     */
+    protected function editableLegacyPeriod(): DividendPeriod
+    {
+        abort_unless(Auth::user()->can('manage_dividend_periods'), 403);
+
+        $period = DividendPeriod::findOrFail($this->legacyPeriodId);
+        abort_unless($period->status === DividendPeriod::STATUS_OPEN, 400, 'Legacy profit can only be changed while the period is open (before rates are declared).');
+
+        return $period;
+    }
+
+    public function addLegacyProfit(): void
+    {
+        $period = $this->editableLegacyPeriod();
+
+        $validated = $this->validate([
+            'legacy_category' => ['required', 'in:'.implode(',', array_keys(DividendLegacyProfit::CATEGORIES))],
+            'legacy_amount' => ['required', 'numeric', 'min:0.01'],
+            'legacy_description' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $entry = $period->legacyProfits()->create([
+            'category' => $validated['legacy_category'],
+            'amount' => $validated['legacy_amount'],
+            'description' => $validated['legacy_description'] ?: null,
+            'entered_by' => Auth::id(),
+        ]);
+
+        ActivityLog::record(
+            action: 'dividend.legacy_profit_added',
+            description: "Added legacy profit to \"{$period->label}\": {$entry->categoryLabel()} ₦".number_format((float) $entry->amount, 2).($entry->description ? " ({$entry->description})" : '').'.',
+            subject: $period,
+            properties: ['category' => $entry->category, 'amount' => (float) $entry->amount, 'description' => $entry->description],
+        );
+
+        $this->reset(['legacy_category', 'legacy_amount', 'legacy_description']);
+        session()->flash('legacy_status', 'Legacy profit added.');
+    }
+
+    public function removeLegacyProfit(int $entryId): void
+    {
+        $period = $this->editableLegacyPeriod();
+        $entry = $period->legacyProfits()->findOrFail($entryId);
+
+        ActivityLog::record(
+            action: 'dividend.legacy_profit_removed',
+            description: "Removed legacy profit from \"{$period->label}\": {$entry->categoryLabel()} ₦".number_format((float) $entry->amount, 2).'.',
+            subject: $period,
+            properties: ['category' => $entry->category, 'amount' => (float) $entry->amount, 'description' => $entry->description],
+        );
+
+        $entry->delete();
+        session()->flash('legacy_status', 'Legacy profit entry removed.');
+    }
+
     public function openReturnForm(int $periodId): void
     {
         abort_unless(Auth::user()->can('manage_dividend_periods'), 403);
@@ -171,11 +256,15 @@ class DividendPeriods extends Component
             ->filter(fn (DividendPeriod $p) => $p->totalPayout() !== null)
             ->mapWithKeys(fn (DividendPeriod $p) => [$p->id => $p->status === DividendPeriod::STATUS_POSTED && $p->distributable_profit_snapshot !== null
                 ? (float) $p->distributable_profit_snapshot
-                : DividendPeriod::distributableProfitFor($p->fy_start_date, $p->fy_end_date)]);
+                : $p->distributableProfit()]);
+
+        $legacyPeriod = $this->legacyPeriodId ? DividendPeriod::with('legacyProfits.enteredBy')->find($this->legacyPeriodId) : null;
 
         return view('livewire.treasurer.dividend-periods', [
             'periods' => $periods,
             'profits' => $profits,
+            'legacyPeriod' => $legacyPeriod,
+            'legacyBreakdown' => $legacyPeriod?->profitBreakdown(),
         ]);
     }
 }

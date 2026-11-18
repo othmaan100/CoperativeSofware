@@ -54,6 +54,31 @@ class DividendPeriod extends Model
         return $this->hasMany(DividendAllocation::class);
     }
 
+    public function legacyProfits(): HasMany
+    {
+        return $this->hasMany(DividendLegacyProfit::class);
+    }
+
+    /**
+     * Profit available for this period: what this system tracked itself
+     * (loan interest + registration fee profit booked in the date range)
+     * plus whatever the Treasurer entered from the legacy records.
+     *
+     * @return array{system: float, legacy: float, total: float}
+     */
+    public function profitBreakdown(): array
+    {
+        $system = self::distributableProfitFor($this->fy_start_date, $this->fy_end_date);
+        $legacy = round((float) $this->legacyProfits()->sum('amount'), 2);
+
+        return ['system' => $system, 'legacy' => $legacy, 'total' => round($system + $legacy, 2)];
+    }
+
+    public function distributableProfit(): float
+    {
+        return $this->profitBreakdown()['total'];
+    }
+
     public function openedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'opened_by');
