@@ -23,6 +23,10 @@ class DividendPeriods extends Component
 
     public string $fy_end_date = '';
 
+    public ?int $returningPeriodId = null;
+
+    public string $return_reason = '';
+
     public function mount(): void
     {
         abort_unless(Auth::user()->can('manage_dividend_periods'), 403);
@@ -103,6 +107,41 @@ class DividendPeriods extends Component
         session()->flash('status', "Calculated {$period->allocations()->count()} member allocation(s). Review before posting.");
     }
 
+    public function openReturnForm(int $periodId): void
+    {
+        abort_unless(Auth::user()->can('manage_dividend_periods'), 403);
+
+        $this->returningPeriodId = $periodId;
+        $this->return_reason = '';
+        $this->resetErrorBag();
+    }
+
+    public function closeReturnForm(): void
+    {
+        $this->returningPeriodId = null;
+        $this->return_reason = '';
+    }
+
+    public function returnToChairman(): void
+    {
+        abort_unless(Auth::user()->can('manage_dividend_periods'), 403);
+
+        $this->validate(['return_reason' => ['required', 'string', 'max:500']]);
+
+        $period = DividendPeriod::findOrFail($this->returningPeriodId);
+        $withdrawn = $period->returnToChairman();
+
+        ActivityLog::record(
+            action: 'dividend.returned_to_chairman',
+            description: "Returned dividend period \"{$period->label}\" to the Chairman for new rates (withdrawn: {$withdrawn['share_dividend_rate_pct']}% dividend, {$withdrawn['savings_interest_rate_pct']}% interest). Reason: {$this->return_reason}",
+            subject: $period,
+            properties: $withdrawn + ['reason' => $this->return_reason],
+        );
+
+        $this->closeReturnForm();
+        session()->flash('status', "\"{$period->label}\" has been returned to the Chairman. The previous rates and calculation were cleared — the Chairman can now declare new rates.");
+    }
+
     public function post(int $periodId): void
     {
         abort_unless(Auth::user()->can('post_dividends'), 403);
@@ -123,8 +162,20 @@ class DividendPeriods extends Component
     #[Layout('layouts.app')]
     public function render()
     {
+        $periods = DividendPeriod::query()->with(['openedBy', 'declaredBy'])->latest('fy_start_date')->paginate(15);
+
+        // Profit each calculated period's payout is compared against: worked out
+        // fresh until posting (loans may still be disbursed within the period),
+        // and the figure captured at declaration once posted.
+        $profits = $periods->getCollection()
+            ->filter(fn (DividendPeriod $p) => $p->totalPayout() !== null)
+            ->mapWithKeys(fn (DividendPeriod $p) => [$p->id => $p->status === DividendPeriod::STATUS_POSTED && $p->distributable_profit_snapshot !== null
+                ? (float) $p->distributable_profit_snapshot
+                : DividendPeriod::distributableProfitFor($p->fy_start_date, $p->fy_end_date)]);
+
         return view('livewire.treasurer.dividend-periods', [
-            'periods' => DividendPeriod::query()->with(['openedBy', 'declaredBy'])->latest('fy_start_date')->paginate(15),
+            'periods' => $periods,
+            'profits' => $profits,
         ]);
     }
 }

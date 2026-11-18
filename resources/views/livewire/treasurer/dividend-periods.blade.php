@@ -31,6 +31,11 @@
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                     @forelse ($periods as $period)
+                        @php
+                            $payout = $period->totalPayout();
+                            $profit = $profits[$period->id] ?? null;
+                            $overProfit = $payout !== null && $profit !== null && $payout > $profit;
+                        @endphp
                         <tr wire:key="period-{{ $period->id }}">
                             <td class="px-4 py-3 font-medium">{{ $period->label }}</td>
                             <td class="px-4 py-3">{{ $period->fy_start_date->format('d M Y') }} – {{ $period->fy_end_date->format('d M Y') }}</td>
@@ -54,13 +59,35 @@
                                         {{ $period->status === 'calculated' ? 'Recalculate' : 'Calculate' }}
                                     </button>
                                 @endif
+                                @if ($period->status === 'declared' || $period->status === 'calculated')
+                                    <button wire:click="openReturnForm({{ $period->id }})" class="text-gray-600 hover:underline">Return to Chairman</button>
+                                @endif
                                 @if ($period->status === 'calculated')
-                                    <button wire:click="post({{ $period->id }})" wire:confirm="Post this period? Amounts will be credited to members' Regular Savings accounts and cannot be undone." class="text-green-700 hover:underline font-semibold">
-                                        Post
+                                    <button wire:click="post({{ $period->id }})" wire:confirm="{{ $overProfit ? 'WARNING: this pays out ₦'.number_format($payout - $profit, 2).' MORE than the profit of ₦'.number_format($profit, 2).'. ' : '' }}Post this period? Amounts will be credited to members' Regular Savings accounts and cannot be undone." class="{{ $overProfit ? 'text-red-700' : 'text-green-700' }} hover:underline font-semibold">
+                                        {{ $overProfit ? 'Post Anyway' : 'Post' }}
                                     </button>
                                 @endif
                             </td>
                         </tr>
+                        @if ($payout !== null && $profit !== null)
+                            <tr wire:key="period-check-{{ $period->id }}">
+                                <td colspan="8" class="px-4 pb-3 pt-0">
+                                    @if ($overProfit)
+                                        <div class="bg-red-50 border border-red-300 text-red-800 rounded-md px-3 py-2 text-xs">
+                                            ⚠ Total payout ₦{{ number_format($payout, 2) }} is <strong>₦{{ number_format($payout - $profit, 2) }} more</strong> than the profit of ₦{{ number_format($profit, 2) }}.
+                                            The difference would come out of the cooperative’s other funds.
+                                            @if ($period->status !== 'posted')
+                                                Confirm with the Chairman before posting, or use <strong>Return to Chairman</strong> so new rates can be declared.
+                                            @endif
+                                        </div>
+                                    @else
+                                        <p class="text-xs text-gray-500">
+                                            Total payout ₦{{ number_format($payout, 2) }} of ₦{{ number_format($profit, 2) }} profit — ₦{{ number_format($profit - $payout, 2) }} stays with the cooperative.
+                                        </p>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endif
                     @empty
                         <tr><td colspan="8" class="px-4 py-6 text-center text-gray-500">No dividend periods yet.</td></tr>
                     @endforelse
@@ -70,6 +97,25 @@
 
         {{ $periods->links() }}
     </div>
+
+    @if ($returningPeriodId)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 px-4">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
+                <h3 class="font-semibold text-lg mb-2">Return to Chairman for New Rates</h3>
+                <p class="text-sm text-gray-500 mb-4">
+                    This clears the declared rates and any calculation, and reopens the period so the Chairman can declare new rates.
+                    Nobody has been paid yet, so no member balances change. The withdrawn rates and your reason are kept in the Activity Log.
+                </p>
+                <x-input-label for="return_reason" value="Reason" />
+                <textarea id="return_reason" wire:model="return_reason" rows="3" class="mt-1 block w-full border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 rounded-md shadow-sm" placeholder="e.g. Payout exceeds the year's profit — please declare lower rates."></textarea>
+                <x-input-error :messages="$errors->get('return_reason')" class="mt-1" />
+                <div class="flex justify-end gap-2 mt-6">
+                    <x-secondary-button wire:click="closeReturnForm">Cancel</x-secondary-button>
+                    <x-danger-button wire:click="returnToChairman" wire:loading.attr="disabled">Return to Chairman</x-danger-button>
+                </div>
+            </div>
+        </div>
+    @endif
 
     @if ($showCreateForm)
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 px-4">

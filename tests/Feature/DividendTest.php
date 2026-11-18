@@ -188,12 +188,18 @@ class DividendTest extends TestCase
         $period = DividendPeriod::firstOrFail();
         $this->assertSame(DividendPeriod::STATUS_OPEN, $period->status);
 
-        // 2. Chairman declares rates.
+        // 2. Chairman declares rates — the live preview shows the payout against
+        //    the profit (none here: no loans or fees), so it must warn.
         Livewire::actingAs($chairman)
             ->test(DividendDeclarations::class)
             ->call('openDeclareForm', $period->id)
+            ->assertSet('avgShareTotal', 10000.0)
+            ->assertSet('avgSavingsTotal', 20000.0)
             ->set('share_dividend_rate_pct', '10')
             ->set('savings_interest_rate_pct', '5')
+            ->assertViewHas('preview', fn ($p) => $p['share'] === 1000.0 && $p['savings'] === 1000.0 && $p['total'] === 2000.0 && $p['over'] === true)
+            ->assertSeeText('more than the profit')
+            ->assertSee('Declare Anyway')
             ->call('saveDeclare');
 
         $period->refresh();
@@ -222,6 +228,42 @@ class DividendTest extends TestCase
         $this->assertEquals(20000.0, (float) $allocation->average_savings_balance);
         $this->assertEquals(1000.0, (float) $allocation->savings_interest_amount);
         $this->assertSame('calculated', $allocation->status);
+
+        // The Treasurer is warned before posting that the payout exceeds the profit.
+        Livewire::actingAs($treasurer)
+            ->test(DividendPeriods::class)
+            ->assertSeeText('is ₦2,000.00 more than the profit of ₦0.00')
+            ->assertSee('Post Anyway');
+
+        // The Treasurer returns it to the Chairman: a reason is required, the draft
+        // calculation is discarded, and the period reopens for new rates.
+        Livewire::actingAs($treasurer)
+            ->test(DividendPeriods::class)
+            ->call('openReturnForm', $period->id)
+            ->call('returnToChairman')
+            ->assertHasErrors('return_reason')
+            ->set('return_reason', 'Payout exceeds profit.')
+            ->call('returnToChairman')
+            ->assertHasNoErrors();
+
+        $period->refresh();
+        $this->assertSame(DividendPeriod::STATUS_OPEN, $period->status);
+        $this->assertNull($period->share_dividend_rate_pct);
+        $this->assertNull($period->totalPayout());
+        $this->assertSame(0, DividendAllocation::where('dividend_period_id', $period->id)->count());
+        $this->assertEquals(20000, (float) $savingsAccount->fresh()->balance, 'Returning must not touch member balances.');
+        $this->assertDatabaseHas('activity_logs', ['action' => 'dividend.returned_to_chairman', 'causer_id' => $treasurer->id]);
+
+        // The Chairman declares again and the Treasurer recalculates; the rest of the lifecycle continues as normal.
+        Livewire::actingAs($chairman)
+            ->test(DividendDeclarations::class)
+            ->call('openDeclareForm', $period->id)
+            ->set('share_dividend_rate_pct', '10')
+            ->set('savings_interest_rate_pct', '5')
+            ->call('saveDeclare');
+        Livewire::actingAs($treasurer)->test(DividendPeriods::class)->call('calculate', $period->id);
+        $this->assertSame(DividendPeriod::STATUS_CALCULATED, $period->fresh()->status);
+        $allocation = DividendAllocation::where('dividend_period_id', $period->id)->where('member_id', $member->id)->firstOrFail();
 
         // 4. Treasurer posts.
         Livewire::actingAs($treasurer)

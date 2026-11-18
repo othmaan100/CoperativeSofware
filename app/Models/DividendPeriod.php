@@ -96,6 +96,83 @@ class DividendPeriod extends Model
     }
 
     /**
+     * The sum, across every active member, of their time-weighted average
+     * Share Capital and Savings balances over this period — exactly the
+     * bases calculate() applies the declared rates to. Used to preview the
+     * total payout before rates are declared. For a period still running,
+     * balances are assumed to stay as they are until the period ends.
+     *
+     * @return array{share: float, savings: float}
+     */
+    public function averageBalanceTotals(): array
+    {
+        $start = $this->fy_start_date->copy()->startOfDay();
+        $end = $this->fy_end_date->copy()->endOfDay();
+        $share = 0.0;
+        $savings = 0.0;
+
+        Member::query()
+            ->where('status', 'active')
+            ->with(['shareAccount', 'savingsAccounts'])
+            ->chunkById(100, function ($members) use ($start, $end, &$share, &$savings) {
+                foreach ($members as $member) {
+                    $share += $member->shareAccount?->averageBalanceBetween($start, $end) ?? 0.0;
+                    $savings += $member->savingsAccounts->sum(fn ($account) => $account->averageBalanceBetween($start, $end));
+                }
+            });
+
+        return ['share' => round($share, 2), 'savings' => round($savings, 2)];
+    }
+
+    /**
+     * Undo a declaration (and any calculation) that has not been posted, so
+     * the Chairman can declare different rates. Nothing has been paid at
+     * this point — calculated allocations are only a draft — so they are
+     * simply discarded. Returns the rates that were withdrawn, for the record.
+     *
+     * @return array{share_dividend_rate_pct: ?float, savings_interest_rate_pct: ?float, total_payout: ?float}
+     */
+    public function returnToChairman(): array
+    {
+        abort_unless(in_array($this->status, [self::STATUS_DECLARED, self::STATUS_CALCULATED], true), 400, 'Only a declared or calculated period that has not been posted can be returned.');
+
+        $withdrawn = [
+            'share_dividend_rate_pct' => $this->share_dividend_rate_pct !== null ? (float) $this->share_dividend_rate_pct : null,
+            'savings_interest_rate_pct' => $this->savings_interest_rate_pct !== null ? (float) $this->savings_interest_rate_pct : null,
+            'total_payout' => $this->totalPayout(),
+        ];
+
+        DB::transaction(function () {
+            $this->allocations()->where('status', self::STATUS_CALCULATED)->delete();
+
+            $this->update([
+                'status' => self::STATUS_OPEN,
+                'share_dividend_rate_pct' => null,
+                'savings_interest_rate_pct' => null,
+                'distributable_profit_snapshot' => null,
+                'total_share_dividend_amount' => null,
+                'total_savings_interest_amount' => null,
+                'declared_by' => null,
+                'declared_at' => null,
+                'calculated_by' => null,
+                'calculated_at' => null,
+            ]);
+        });
+
+        return $withdrawn;
+    }
+
+    /** Total the members would receive: calculated amounts once calculated, otherwise null. */
+    public function totalPayout(): ?float
+    {
+        if ($this->total_share_dividend_amount === null && $this->total_savings_interest_amount === null) {
+            return null;
+        }
+
+        return round((float) $this->total_share_dividend_amount + (float) $this->total_savings_interest_amount, 2);
+    }
+
+    /**
      * (Re)computes every active member's time-weighted average Share
      * Capital and Savings balances over this period, and the resulting
      * dividend/interest amounts at the declared rates. Safe to re-run any

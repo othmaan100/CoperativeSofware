@@ -19,6 +19,11 @@ class DividendDeclarations extends Component
 
     public string $fy_start_month = '';
 
+    /** Sum of all active members' average share / savings balances for the period being declared. */
+    public float $avgShareTotal = 0.0;
+
+    public float $avgSavingsTotal = 0.0;
+
     public function mount(): void
     {
         abort_unless(Auth::user()->can('declare_dividend_rates'), 403);
@@ -38,9 +43,40 @@ class DividendDeclarations extends Component
 
     public function openDeclareForm(int $periodId): void
     {
+        $period = DividendPeriod::findOrFail($periodId);
+
         $this->activePeriodId = $periodId;
         $this->share_dividend_rate_pct = '';
         $this->savings_interest_rate_pct = '';
+
+        // Worked out once here (it walks every member's ledger); the live
+        // preview then only multiplies these by the rates being typed.
+        ['share' => $this->avgShareTotal, 'savings' => $this->avgSavingsTotal] = $period->averageBalanceTotals();
+    }
+
+    /**
+     * Estimated payout at the rates currently typed in, against the
+     * period's distributable profit.
+     *
+     * @return array{share: float, savings: float, total: float, profit: float, over: bool, shortfall: float}
+     */
+    protected function payoutPreview(float $profit): array
+    {
+        $shareRate = is_numeric($this->share_dividend_rate_pct) ? (float) $this->share_dividend_rate_pct : 0.0;
+        $savingsRate = is_numeric($this->savings_interest_rate_pct) ? (float) $this->savings_interest_rate_pct : 0.0;
+
+        $share = round($this->avgShareTotal * $shareRate / 100, 2);
+        $savings = round($this->avgSavingsTotal * $savingsRate / 100, 2);
+        $total = round($share + $savings, 2);
+
+        return [
+            'share' => $share,
+            'savings' => $savings,
+            'total' => $total,
+            'profit' => $profit,
+            'over' => $total > $profit,
+            'shortfall' => round(max(0, $total - $profit), 2),
+        ];
     }
 
     public function closeModal(): void
@@ -84,13 +120,15 @@ class DividendDeclarations extends Component
     public function render()
     {
         $activePeriod = $this->activePeriodId ? DividendPeriod::find($this->activePeriodId) : null;
+        $distributableEstimate = $activePeriod
+            ? DividendPeriod::distributableProfitFor($activePeriod->fy_start_date, $activePeriod->fy_end_date)
+            : null;
 
         return view('livewire.chairman.dividend-declarations', [
             'periods' => DividendPeriod::query()->latest('fy_start_date')->paginate(15),
             'activePeriod' => $activePeriod,
-            'distributableEstimate' => $activePeriod
-                ? DividendPeriod::distributableProfitFor($activePeriod->fy_start_date, $activePeriod->fy_end_date)
-                : null,
+            'distributableEstimate' => $distributableEstimate,
+            'preview' => $activePeriod ? $this->payoutPreview((float) $distributableEstimate) : null,
         ]);
     }
 }
