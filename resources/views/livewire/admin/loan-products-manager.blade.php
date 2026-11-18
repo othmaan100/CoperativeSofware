@@ -15,8 +15,29 @@
                     <div>
                         <h3 class="font-semibold">{{ $product->name }}</h3>
                         <p class="text-xs text-gray-500">Code: {{ $product->code }} &middot; {{ $product->is_active ? 'Active' : 'Inactive' }}</p>
+                        @if ($product->code !== \App\Models\LoanProduct::COMMODITY)
+                            <p class="text-xs mt-1">
+                                @if ($product->isAcceptingApplications())
+                                    <span class="text-green-700 font-medium">Applications open{{ $product->applications_close_on ? ' until '.$product->applications_close_on->format('d M Y') : '' }}</span>
+                                @elseif ($product->applicationsExpired())
+                                    <span class="text-gray-500">Applications closed — closing date {{ $product->applications_close_on->format('d M Y') }} has passed</span>
+                                @else
+                                    <span class="text-gray-500">Applications closed{{ $product->is_active ? '' : ' (product inactive)' }}</span>
+                                @endif
+                            </p>
+                        @endif
                     </div>
-                    <div class="flex gap-2 text-sm">
+                    <div class="flex flex-wrap gap-2 text-sm">
+                        @can('open_loan_applications')
+                            @if ($product->code !== \App\Models\LoanProduct::COMMODITY && $product->is_active)
+                                @if ($product->isAcceptingApplications())
+                                    <x-secondary-button wire:click="openApplicationsForm({{ $product->id }})">Change Closing Date</x-secondary-button>
+                                    <x-danger-button wire:click="closeApplications({{ $product->id }})" wire:confirm="Close applications for {{ $product->name }}? Members will no longer be able to apply.">Close Applications</x-danger-button>
+                                @else
+                                    <x-primary-button wire:click="openApplicationsForm({{ $product->id }})">Open Applications</x-primary-button>
+                                @endif
+                            @endif
+                        @endcan
                         @can('set_loan_interest_rates')
                             <x-secondary-button wire:click="openRates({{ $product->id }})">Edit Rates</x-secondary-button>
                         @endcan
@@ -58,6 +79,24 @@
                 <div class="flex justify-end gap-2 mt-6">
                     <x-secondary-button wire:click="closeModal">Cancel</x-secondary-button>
                     <x-primary-button wire:click="saveRates" wire:loading.attr="disabled">Save</x-primary-button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    @if ($activeId && $mode === 'applications')
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 px-4">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
+                <h3 class="font-semibold text-lg mb-2">Open Loan Applications</h3>
+                <p class="text-sm text-gray-500 mb-4">Members will be able to apply for this loan product. Leave the closing date empty to keep it open until you close it.</p>
+                <div>
+                    <x-input-label for="applications_close_on" value="Open until (last day, optional)" />
+                    <x-text-input id="applications_close_on" wire:model="applications_close_on" type="date" class="mt-1 block w-full" />
+                    <x-input-error :messages="$errors->get('applications_close_on')" class="mt-1" />
+                </div>
+                <div class="flex justify-end gap-2 mt-6">
+                    <x-secondary-button wire:click="closeModal">Cancel</x-secondary-button>
+                    <x-primary-button wire:click="saveOpenApplications" wire:loading.attr="disabled">Open Applications</x-primary-button>
                 </div>
             </div>
         </div>

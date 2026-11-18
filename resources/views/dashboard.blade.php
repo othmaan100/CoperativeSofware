@@ -187,7 +187,7 @@
                         </a>
                     @endcan
 
-                    @canany(['manage_loan_products', 'set_loan_interest_rates', 'manage_loan_limit_multiplier'])
+                    @canany(['manage_loan_products', 'set_loan_interest_rates', 'manage_loan_limit_multiplier', 'open_loan_applications'])
                         <a href="{{ route('admin.loan-products.index') }}" wire:navigate class="block p-4 rounded-lg border border-slate-200 dark:border-gray-700 hover:border-emerald-400 hover:shadow-md bg-white dark:bg-gray-800/50 transition">
                             <h4 class="font-medium text-slate-900 dark:text-white">Loan Products</h4>
                             <p class="text-sm text-gray-500">Configure rates, tenure, and the savings-linked limit.</p>

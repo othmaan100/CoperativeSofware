@@ -40,12 +40,72 @@ class LoanProductsManager extends Component
 
     public string $effective_from = '';
 
+    // Application window (Treasurer / Super Admin)
+    public string $applications_close_on = '';
+
     public function mount(): void
     {
         abort_unless(
-            Auth::user()->canAny(['manage_loan_products', 'set_loan_interest_rates', 'manage_loan_limit_multiplier']),
+            Auth::user()->canAny(['manage_loan_products', 'set_loan_interest_rates', 'manage_loan_limit_multiplier', 'open_loan_applications']),
             403
         );
+    }
+
+    public function openApplicationsForm(int $id): void
+    {
+        abort_unless(Auth::user()->can('open_loan_applications'), 403);
+
+        $product = LoanProduct::findOrFail($id);
+        abort_if($product->code === LoanProduct::COMMODITY, 400, 'Commodity loans are created through commodity cycles, not applications.');
+
+        $this->activeId = $id;
+        $this->mode = 'applications';
+        $this->applications_close_on = $product->applications_close_on?->toDateString() ?? '';
+        $this->resetErrorBag();
+    }
+
+    public function saveOpenApplications(): void
+    {
+        abort_unless(Auth::user()->can('open_loan_applications'), 403);
+
+        $validated = $this->validate([
+            'applications_close_on' => ['nullable', 'date', 'after_or_equal:today'],
+        ], [
+            'applications_close_on.after_or_equal' => 'The closing date cannot be in the past.',
+        ]);
+
+        $product = LoanProduct::findOrFail($this->activeId);
+        abort_if($product->code === LoanProduct::COMMODITY, 400);
+        abort_unless($product->is_active, 400, 'This loan product is inactive. Ask the Super Admin to activate it first.');
+
+        $closeOn = $validated['applications_close_on'] ?: null;
+        $product->update(['applications_open' => true, 'applications_close_on' => $closeOn]);
+
+        ActivityLog::record(
+            action: 'loan.applications_opened',
+            description: "Opened applications for {$product->name}".($closeOn ? ' until '.\Illuminate\Support\Carbon::parse($closeOn)->format('d M Y') : ' (no closing date)').'.',
+            subject: $product,
+            properties: ['applications_close_on' => $closeOn],
+        );
+
+        session()->flash('status', "Applications for {$product->name} are now open".($closeOn ? ' until '.\Illuminate\Support\Carbon::parse($closeOn)->format('d M Y') : '').'.');
+        $this->closeModal();
+    }
+
+    public function closeApplications(int $id): void
+    {
+        abort_unless(Auth::user()->can('open_loan_applications'), 403);
+
+        $product = LoanProduct::findOrFail($id);
+        $product->update(['applications_open' => false, 'applications_close_on' => null]);
+
+        ActivityLog::record(
+            action: 'loan.applications_closed',
+            description: "Closed applications for {$product->name}.",
+            subject: $product,
+        );
+
+        session()->flash('status', "Applications for {$product->name} are now closed. Applications already submitted are not affected.");
     }
 
     public function openRates(int $id): void
@@ -92,7 +152,7 @@ class LoanProductsManager extends Component
             'activeId', 'mode', 'interest_admin_pct', 'interest_profit_pct',
             'max_tenure_months', 'min_membership_months', 'min_savings_balance',
             'requires_guarantor', 'min_guarantors', 'max_guarantors', 'is_active',
-            'multiplier', 'effective_from',
+            'multiplier', 'effective_from', 'applications_close_on',
         ]);
     }
 

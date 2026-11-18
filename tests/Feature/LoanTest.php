@@ -44,6 +44,77 @@ class LoanTest extends TestCase
         $this->seed(SettingsSeeder::class);
         $this->seed(SavingsSeeder::class);
         $this->seed(LoanSeeder::class);
+
+        // Products start with applications closed; the existing application
+        // tests assume the Treasurer has opened them.
+        LoanProduct::whereIn('code', [LoanProduct::REGULAR, LoanProduct::EMERGENCY])->update(['applications_open' => true]);
+    }
+
+    public function test_members_cannot_apply_until_the_treasurer_opens_applications(): void
+    {
+        $regular = LoanProduct::where('code', LoanProduct::REGULAR)->first();
+        LoanProduct::query()->update(['applications_open' => false]);
+
+        $borrower = $this->makeActiveMember(['staff_id' => 'FCET-8001']);
+        $this->withSavings($borrower, 50000);
+        $guarantor = $this->makeActiveMember(['staff_id' => 'FCET-8002']);
+        $this->withSavings($guarantor, 20000);
+
+        $apply = fn () => Livewire::actingAs($borrower->user)
+            ->test(ApplyForLoan::class)
+            ->set('loan_product_id', (string) $regular->id)
+            ->set('principal_amount', '50000')
+            ->set('tenure_months', '6')
+            ->set('guarantor_1_staff_id', 'FCET-8002')
+            ->set('guarantor_1_pledged_amount', '20000')
+            ->call('submit');
+
+        // Closed by default: the form is hidden and a submission is refused.
+        Livewire::actingAs($borrower->user)->test(ApplyForLoan::class)
+            ->assertSee('Loan applications are not open at the moment.')
+            ->assertSee('Applications currently closed');
+        $apply()->assertHasErrors(['loan_product_id' => 'in']);
+        $this->assertSame(0, Loan::count());
+
+        // A member cannot open applications; the Treasurer can, with a closing date.
+        Livewire::actingAs($borrower->user)->test(\App\Livewire\Admin\LoanProductsManager::class)->assertForbidden();
+
+        $treasurer = User::factory()->create();
+        $treasurer->assignRole('treasurer');
+        $closeOn = now()->addDays(10)->toDateString();
+
+        Livewire::actingAs($treasurer)
+            ->test(\App\Livewire\Admin\LoanProductsManager::class)
+            ->call('openApplicationsForm', $regular->id)
+            ->set('applications_close_on', now()->subDay()->toDateString())
+            ->call('saveOpenApplications')
+            ->assertHasErrors('applications_close_on') // closing date in the past is rejected
+            ->set('applications_close_on', $closeOn)
+            ->call('saveOpenApplications')
+            ->assertHasNoErrors();
+
+        $regular->refresh();
+        $this->assertTrue($regular->isAcceptingApplications());
+        $this->assertDatabaseHas('activity_logs', ['action' => 'loan.applications_opened', 'causer_id' => $treasurer->id]);
+
+        Livewire::actingAs($borrower->user)->test(ApplyForLoan::class)
+            ->assertSee('Open until '.$regular->applications_close_on->format('d M Y'));
+        $apply()->assertHasNoErrors();
+        $this->assertSame(1, Loan::count());
+
+        // Once the closing date has passed, applications close by themselves.
+        $this->travelTo(now()->addDays(11));
+        $this->assertFalse($regular->fresh()->isAcceptingApplications());
+        $apply()->assertHasErrors(['loan_product_id' => 'in']);
+        $this->assertSame(1, Loan::count());
+        $this->travelBack();
+
+        // Closing by hand works too.
+        Livewire::actingAs($treasurer)
+            ->test(\App\Livewire\Admin\LoanProductsManager::class)
+            ->call('closeApplications', $regular->id);
+        $this->assertFalse($regular->fresh()->applications_open);
+        $this->assertDatabaseHas('activity_logs', ['action' => 'loan.applications_closed']);
     }
 
     protected function makeActiveMember(array $overrides = []): Member

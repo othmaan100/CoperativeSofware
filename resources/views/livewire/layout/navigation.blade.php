@@ -330,7 +330,7 @@ new class extends Component
                 </x-sidebar-group>
             @endcanany
 
-            @canany(['treasurer_review_loan', 'post_loan_repayment_batch', 'confirm_loan_repayment', 'import_loans', 'chairman_authorize_loan', 'manage_loan_products', 'set_loan_interest_rates', 'manage_loan_limit_multiplier', 'manage_commodity_catalogue', 'manage_commodity_cycles', 'price_commodity_cycle', 'verify_commodity_cycle', 'approve_commodity_cycle', 'authorize_commodity_cycle', 'release_commodity_goods'])
+            @canany(['treasurer_review_loan', 'post_loan_repayment_batch', 'confirm_loan_repayment', 'import_loans', 'chairman_authorize_loan', 'manage_loan_products', 'set_loan_interest_rates', 'manage_loan_limit_multiplier', 'open_loan_applications', 'manage_commodity_catalogue', 'manage_commodity_cycles', 'price_commodity_cycle', 'verify_commodity_cycle', 'approve_commodity_cycle', 'authorize_commodity_cycle', 'release_commodity_goods'])
                 <x-sidebar-group label="Loans" :active="request()->routeIs(['treasurer.loans', 'treasurer.loan-repayment-batches.*', 'treasurer.loan-repayment-intents', 'treasurer.savings-loan-repayments', 'treasurer.loan-repayment-reversals','treasurer.loan-tenure-changes', 'treasurer.loan-imports.*', 'chairman.loans', 'chairman.loan-tenure-changes', 'admin.loan-products.*', 'commodities.*'])">
                     @can('treasurer_review_loan')
                         <x-sidebar-link :href="route('treasurer.loans')" :active="request()->routeIs('treasurer.loans')" wire:navigate>
@@ -377,7 +377,7 @@ new class extends Component
                         </x-sidebar-link>
                     @endcan
 
-                    @canany(['manage_loan_products', 'set_loan_interest_rates', 'manage_loan_limit_multiplier'])
+                    @canany(['manage_loan_products', 'set_loan_interest_rates', 'manage_loan_limit_multiplier', 'open_loan_applications'])
                         <x-sidebar-link :href="route('admin.loan-products.index')" :active="request()->routeIs('admin.loan-products.*')" wire:navigate>
                             {{ __('Loan Products') }}
                         </x-sidebar-link>

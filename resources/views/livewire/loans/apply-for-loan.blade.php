@@ -4,12 +4,38 @@
     </x-slot>
 
     <div class="py-8 max-w-2xl mx-auto sm:px-6 lg:px-8 space-y-6">
+        {{-- Which loan products are open for applications right now. --}}
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <h3 class="font-semibold mb-3">Loan Applications</h3>
+            <div class="space-y-2 text-sm">
+                @forelse ($this->products as $product)
+                    <div class="flex items-center justify-between flex-wrap gap-2 border-b border-gray-100 dark:border-gray-700 last:border-0 pb-2">
+                        <span>{{ $product->name }}</span>
+                        @if ($product->isAcceptingApplications())
+                            <span class="text-green-700 font-medium">
+                                Open{{ $product->applications_close_on ? ' until '.$product->applications_close_on->format('d M Y') : '' }}
+                            </span>
+                        @else
+                            <span class="text-gray-500">Applications currently closed</span>
+                        @endif
+                    </div>
+                @empty
+                    <p class="text-gray-500">No loan products are available.</p>
+                @endforelse
+            </div>
+        </div>
+
+        @if ($this->openProducts->isEmpty())
+            <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-md px-4 py-3 text-sm">
+                Loan applications are not open at the moment. You will be able to apply once the Treasurer opens applications for a loan product.
+            </div>
+        @else
         <form wire:submit="submit" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-5">
             <div>
                 <x-input-label for="loan_product_id" value="Loan Product" />
                 <select id="loan_product_id" wire:model.live="loan_product_id" class="mt-1 block w-full border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 rounded-md shadow-sm">
                     <option value="">Select a loan product</option>
-                    @foreach ($this->products as $product)
+                    @foreach ($this->openProducts as $product)
                         <option value="{{ $product->id }}">{{ $product->name }} ({{ $product->interest_rate_flat }}% flat, up to {{ $product->max_tenure_months }} months)</option>
                     @endforeach
                 </select>
@@ -83,5 +109,6 @@
                 <x-primary-button wire:loading.attr="disabled">Submit Application</x-primary-button>
             </div>
         </form>
+        @endif
     </div>
 </div>

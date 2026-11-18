@@ -58,6 +58,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'manage_loan_products',
             'set_loan_interest_rates',
             'manage_loan_limit_multiplier',
+            'open_loan_applications',
             'import_loans',
             'view_loan_reports',
 
@@ -172,6 +173,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'post_loan_repayment_batch',
                 'confirm_loan_repayment',
                 'manage_loan_limit_multiplier',
+                'open_loan_applications',
                 'import_loans',
                 'view_loan_reports',
                 'view_registration_fee_reports',

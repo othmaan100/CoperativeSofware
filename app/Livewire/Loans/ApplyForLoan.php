@@ -50,10 +50,17 @@ class ApplyForLoan extends Component
             ->get();
     }
 
+    /** Only products the Treasurer has opened applications for can be applied for. */
+    #[Computed]
+    public function openProducts()
+    {
+        return $this->products->filter(fn (LoanProduct $product) => $product->isAcceptingApplications())->values();
+    }
+
     #[Computed]
     public function selectedProduct(): ?LoanProduct
     {
-        return $this->loan_product_id ? $this->products->firstWhere('id', (int) $this->loan_product_id) : null;
+        return $this->loan_product_id ? $this->openProducts->firstWhere('id', (int) $this->loan_product_id) : null;
     }
 
     #[Computed]
@@ -71,7 +78,7 @@ class ApplyForLoan extends Component
         $product = $this->selectedProduct;
 
         $rules = [
-            'loan_product_id' => ['required', Rule::in($this->products->pluck('id')->all())],
+            'loan_product_id' => ['required', Rule::in($this->openProducts->pluck('id')->all())],
             'principal_amount' => ['required', 'numeric', 'min:1'],
             'tenure_months' => ['required', 'integer', 'min:1', 'max:'.($product?->max_tenure_months ?? 12)],
         ];
@@ -87,6 +94,13 @@ class ApplyForLoan extends Component
         }
 
         return $rules;
+    }
+
+    protected function messages(): array
+    {
+        return [
+            'loan_product_id.in' => 'Applications for this loan product are not open at the moment.',
+        ];
     }
 
     protected function resolveGuarantor(string $staffId): Member

@@ -28,6 +28,8 @@ class LoanProduct extends Model
         'default_after_days_overdue',
         'guarantor_grace_days',
         'is_active',
+        'applications_open',
+        'applications_close_on',
     ];
 
     protected $casts = [
@@ -36,7 +38,29 @@ class LoanProduct extends Model
         'min_savings_balance' => 'decimal:2',
         'requires_guarantor' => 'boolean',
         'is_active' => 'boolean',
+        'applications_open' => 'boolean',
+        'applications_close_on' => 'date',
     ];
+
+    /**
+     * Whether members can apply for this product right now: it must be
+     * active, the Treasurer must have opened applications, and any closing
+     * date set must not have passed (the closing date itself is included).
+     */
+    public function isAcceptingApplications(): bool
+    {
+        return $this->is_active
+            && $this->applications_open
+            && ($this->applications_close_on === null || ! $this->applications_close_on->endOfDay()->isPast());
+    }
+
+    /** Opened by the Treasurer, but its closing date has now passed. */
+    public function applicationsExpired(): bool
+    {
+        return $this->applications_open
+            && $this->applications_close_on !== null
+            && $this->applications_close_on->endOfDay()->isPast();
+    }
 
     public function loans(): HasMany
     {
