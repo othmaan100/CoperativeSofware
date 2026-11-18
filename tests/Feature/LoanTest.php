@@ -240,6 +240,24 @@ class LoanTest extends TestCase
         $this->assertSame(10, $loan->schedules()->count());
         $this->assertEquals(110000, (float) $loan->schedules()->sum('amount_due'), 'Schedule must sum exactly to the total repayable, rounding absorbed in the last installment.');
 
+        // Every stage's date (and who acted) is shown on the History tab, and the date filter applies.
+        $fmt = fn ($d) => $d->format('d M Y, g:i a');
+        $guarantorRecord->refresh();
+        Livewire::actingAs($treasurer)
+            ->test(LoanApplications::class)
+            ->call('setTab', 'history')
+            ->assertSeeText('Applied: '.$fmt($loan->applied_at))
+            ->assertSeeText('Guarantor accepted: '.$fmt($guarantorRecord->accepted_at).' — '.$guarantorMember->full_name)
+            ->assertSeeText('Endorsed: '.$fmt($loan->treasurer_reviewed_at).' — '.$treasurer->name)
+            ->assertSeeText('Authorized: '.$fmt($loan->chairman_reviewed_at))
+            ->assertSeeText('Disbursed: '.$fmt($loan->disbursed_at).' — '.$treasurer->name)
+            ->set('dateFrom', $loan->disbursed_at->format('Y-m-d'))
+            ->set('dateTo', $loan->disbursed_at->format('Y-m-d'))
+            ->assertViewHas('loans', fn ($l) => $l->total() === 1)
+            ->set('dateFrom', $loan->disbursed_at->copy()->addDay()->format('Y-m-d'))
+            ->set('dateTo', '')
+            ->assertViewHas('loans', fn ($l) => $l->total() === 0);
+
         // Post a full repayment via the batch mechanism.
         $csv = "staff_id,loan_no,amount\nFCET-7001,{$loan->loan_no},110000\n";
         $file = UploadedFile::fake()->createWithContent('loan-repayments.csv', $csv);

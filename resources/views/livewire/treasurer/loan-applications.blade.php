@@ -14,6 +14,23 @@
             @endforeach
         </div>
 
+        @if ($tab === 'history')
+            <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4 flex items-end gap-4 flex-wrap">
+                <div>
+                    <x-input-label for="dateFrom" value="From" />
+                    <x-text-input id="dateFrom" wire:model.live="dateFrom" type="date" class="mt-1 block" />
+                </div>
+                <div>
+                    <x-input-label for="dateTo" value="To" />
+                    <x-text-input id="dateTo" wire:model.live="dateTo" type="date" class="mt-1 block" />
+                </div>
+                @if ($dateFrom !== '' || $dateTo !== '')
+                    <x-secondary-button wire:click="clearDates">Clear dates</x-secondary-button>
+                @endif
+                <p class="text-xs text-gray-500 w-full">Filters by the date each loan was disbursed — or, for rejected/declined loans, the date it was decided.</p>
+            </div>
+        @endif
+
         <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-x-auto">
             <table class="min-w-full text-sm">
                 <thead class="bg-gray-50 dark:bg-gray-700 text-left text-xs uppercase text-gray-500">
@@ -24,6 +41,7 @@
                         <th class="px-4 py-3 text-right">Principal</th>
                         <th class="px-4 py-3 text-right">Repayable</th>
                         <th class="px-4 py-3">Status</th>
+                        <th class="px-4 py-3">Dates</th>
                         <th class="px-4 py-3 text-right">Actions</th>
                     </tr>
                 </thead>
@@ -35,8 +53,16 @@
                             <td class="px-4 py-3">{{ $loan->product->name }}</td>
                             <td class="px-4 py-3 text-right">₦{{ number_format((float) $loan->principal_amount, 2) }}</td>
                             <td class="px-4 py-3 text-right">₦{{ number_format((float) $loan->total_repayable, 2) }}</td>
-                            <td class="px-4 py-3">{{ ucwords(str_replace('_', ' ', $loan->status)) }}</td>
-                            <td class="px-4 py-3 text-right space-x-2">
+                            <td class="px-4 py-3">
+                                {{ ucwords(str_replace('_', ' ', $loan->status)) }}
+                                @if ($loan->is_legacy_import)
+                                    <div class="text-xs text-gray-500">Imported record</div>
+                                @endif
+                            </td>
+                            <td class="px-4 py-3 text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                                @include('livewire.partials.loan-dates', ['loan' => $loan])
+                            </td>
+                            <td class="px-4 py-3 text-right space-x-2 whitespace-nowrap">
                                 @if ($tab === 'pending')
                                     <button wire:click="openReview({{ $loan->id }})" class="text-emerald-600 hover:underline">Review</button>
                                     <button wire:click="openReject({{ $loan->id }})" class="text-red-700 hover:underline">Reject</button>
@@ -47,7 +73,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="px-4 py-6 text-center text-gray-500">No loans in this view.</td></tr>
+                        <tr><td colspan="8" class="px-4 py-6 text-center text-gray-500">No loans in this view.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -63,6 +89,9 @@
                 <p class="text-sm text-gray-500 mb-4">
                     {{ $activeLoan->member->full_name }} — Principal ₦{{ number_format((float) $activeLoan->principal_amount, 2) }},
                     Total Repayable ₦{{ number_format((float) $activeLoan->total_repayable, 2) }}
+                    @if ($activeLoan->applied_at)
+                        <span class="block">Applied on {{ $activeLoan->applied_at->format('d M Y, g:i a') }}</span>
+                    @endif
                 </p>
 
                 <div class="space-y-4">
@@ -104,7 +133,14 @@
     @if ($activeLoan && $mode === 'disburse')
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 px-4">
             <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full p-6">
-                <h3 class="font-semibold text-lg mb-4">Disburse Loan — {{ $activeLoan->loan_no }}</h3>
+                <h3 class="font-semibold text-lg mb-1">Disburse Loan — {{ $activeLoan->loan_no }}</h3>
+                <p class="text-sm text-gray-500 mb-4">
+                    {{ $activeLoan->member->full_name }} — ₦{{ number_format((float) $activeLoan->principal_amount, 2) }}
+                    @if ($activeLoan->chairman_reviewed_at)
+                        <span class="block">Authorized by the Chairman on {{ $activeLoan->chairman_reviewed_at->format('d M Y, g:i a') }}</span>
+                    @endif
+                    <span class="block">The disbursement date recorded will be today, {{ now()->format('d M Y') }}.</span>
+                </p>
                 <div class="space-y-4">
                     <div>
                         <x-input-label for="disbursement_method" value="Method" />

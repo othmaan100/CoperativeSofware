@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Treasurer;
 
+use App\Livewire\Concerns\FiltersByDateRange;
 use App\Models\ActivityLog;
 use App\Models\Loan;
 use App\Notifications\LoanDisbursedNotification;
@@ -12,6 +13,7 @@ use Livewire\WithPagination;
 
 class LoanApplications extends Component
 {
+    use FiltersByDateRange;
     use WithPagination;
 
     public string $tab = 'pending';
@@ -173,7 +175,7 @@ class LoanApplications extends Component
     #[Layout('layouts.app')]
     public function render()
     {
-        $query = Loan::with(['member', 'product']);
+        $query = Loan::with(['member', 'product', 'guarantors.guarantorMember', 'treasurerReviewedBy', 'chairmanReviewedBy', 'disbursedBy']);
 
         match ($this->tab) {
             'awaiting_guarantor' => $query->where('status', 'pending_guarantor'),
@@ -183,8 +185,23 @@ class LoanApplications extends Component
             default => $query->where('status', 'pending'),
         };
 
+        if ($this->tab === 'history') {
+            // Ordered and filtered by when each loan was disbursed (or, if it never
+            // was, when it was decided), so imported loans sit at their real date.
+            $settledAt = 'COALESCE(disbursed_at, chairman_reviewed_at, treasurer_reviewed_at, applied_at)';
+            if ($from = $this->validDate($this->dateFrom)) {
+                $query->whereRaw("DATE({$settledAt}) >= ?", [$from]);
+            }
+            if ($to = $this->validDate($this->dateTo)) {
+                $query->whereRaw("DATE({$settledAt}) <= ?", [$to]);
+            }
+            $query->orderByRaw("{$settledAt} DESC");
+        } else {
+            $query->latest('applied_at');
+        }
+
         return view('livewire.treasurer.loan-applications', [
-            'loans' => $query->latest('applied_at')->paginate(15),
+            'loans' => $query->latest('id')->paginate(15),
             'activeLoan' => $this->activeId ? Loan::with(['member', 'product'])->find($this->activeId) : null,
         ]);
     }
