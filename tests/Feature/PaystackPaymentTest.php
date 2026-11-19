@@ -335,4 +335,123 @@ class PaystackPaymentTest extends TestCase
         $this->assertSame('success', $payment->fresh()->status);
         $this->assertSame('bank_transfer', $payment->fresh()->channel);
     }
+
+    protected function fakeVerify(string $status, int $amountKobo = 500000): void
+    {
+        Http::fake([
+            'api.paystack.co/transaction/verify/*' => Http::response([
+                'status' => true,
+                'data' => ['status' => $status, 'amount' => $amountKobo, 'currency' => 'NGN', 'channel' => 'bank_transfer'],
+            ], 200),
+        ]);
+    }
+
+    protected function pendingPayment(Member $member, string $reference, ?\DateTimeInterface $initiatedAt = null): ApplicationFeePayment
+    {
+        return ApplicationFeePayment::create([
+            'member_id' => $member->id,
+            'reference' => $reference,
+            'amount' => 5000,
+            'status' => 'pending',
+            'initiated_at' => $initiatedAt ?? now(),
+        ]);
+    }
+
+    public function test_a_transfer_still_clearing_stays_pending_instead_of_failing(): void
+    {
+        $member = $this->registerApplicant();
+        $payment = $this->pendingPayment($member, 'FEE-TEST-PROC');
+        $this->fakeVerify('ongoing');
+
+        $this->actingAs($member->user)
+            ->get(route('payments.paystack.callback', ['reference' => 'FEE-TEST-PROC']))
+            ->assertRedirect(route('my-application.pay-fee'))
+            ->assertSessionHas('status');
+
+        $this->assertSame('pending', $payment->fresh()->status);
+        $this->assertFalse($member->fresh()->application_fee_paid);
+    }
+
+    public function test_applicant_can_check_a_payment_that_never_came_back(): void
+    {
+        $member = $this->registerApplicant();
+        $payment = $this->pendingPayment($member, 'FEE-TEST-LOST');
+        $this->fakeVerify('success');
+
+        Livewire::actingAs($member->user)
+            ->test(PayApplicationFee::class)
+            ->assertSee('Check payment')
+            ->call('checkPayment', $payment->id)
+            ->assertRedirect(route('my-application'));
+
+        $this->assertSame('success', $payment->fresh()->status);
+        $this->assertTrue($member->fresh()->application_fee_paid);
+    }
+
+    public function test_applicant_cannot_check_someone_elses_payment(): void
+    {
+        $member = $this->registerApplicant();
+        $other = Member::factory()->create();
+        $payment = $this->pendingPayment($other, 'FEE-TEST-OTHER');
+
+        $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+        Livewire::actingAs($member->user)
+            ->test(PayApplicationFee::class)
+            ->call('checkPayment', $payment->id);
+    }
+
+    public function test_pay_now_confirms_an_earlier_successful_attempt_instead_of_charging_again(): void
+    {
+        $member = $this->registerApplicant();
+        $this->pendingPayment($member, 'FEE-TEST-EARLIER', now()->subHours(2));
+        $this->fakeVerify('success');
+
+        Livewire::actingAs($member->user)
+            ->test(PayApplicationFee::class)
+            ->call('payNow')
+            ->assertRedirect(route('my-application'));
+
+        $this->assertTrue($member->fresh()->application_fee_paid);
+        $this->assertSame(1, ApplicationFeePayment::count(), 'No new Paystack transaction should be started.');
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'transaction/initialize'));
+    }
+
+    public function test_pay_now_waits_while_a_recent_attempt_is_still_processing(): void
+    {
+        $member = $this->registerApplicant();
+        $this->pendingPayment($member, 'FEE-TEST-RECENT', now()->subMinutes(5));
+        $this->fakeVerify('ongoing');
+
+        Livewire::actingAs($member->user)
+            ->test(PayApplicationFee::class)
+            ->call('payNow')
+            ->assertNoRedirect();
+
+        $this->assertSame(1, ApplicationFeePayment::count());
+        $this->assertFalse($member->fresh()->application_fee_paid);
+    }
+
+    public function test_receipt_is_shown_to_the_applicant_and_officials_only(): void
+    {
+        $member = $this->registerApplicant();
+        $payment = $this->pendingPayment($member, 'FEE-TEST-RCPT');
+
+        $this->actingAs($member->user)->get(route('application-fee.receipt', $payment))->assertNotFound();
+
+        $payment->applyVerification(['status' => 'success', 'amount' => 500000, 'currency' => 'NGN', 'channel' => 'card']);
+
+        $this->actingAs($member->user)->get(route('application-fee.receipt', $payment))
+            ->assertOk()
+            ->assertSeeText('FEE-TEST-RCPT')
+            ->assertSeeText($member->full_name)
+            ->assertSeeText('₦5,000.00');
+
+        $treasurer = User::factory()->create();
+        $treasurer->assignRole('treasurer');
+        $this->actingAs($treasurer)->get(route('application-fee.receipt', $payment))->assertOk();
+
+        $stranger = User::factory()->create();
+        $stranger->assignRole('member');
+        $this->actingAs($stranger)->get(route('application-fee.receipt', $payment))->assertForbidden();
+    }
 }

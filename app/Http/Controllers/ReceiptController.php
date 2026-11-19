@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ApplicationFeePayment;
 use App\Models\LoanRepaymentIntent;
 use App\Models\VoluntaryDepositIntent;
 use Illuminate\Support\Facades\Auth;
@@ -19,6 +20,26 @@ class ReceiptController extends Controller
         );
 
         return Storage::disk('local')->download($intent->receipt_path, $intent->receipt_original_filename);
+    }
+
+    /**
+     * Printable receipt for a confirmed application (registration) fee —
+     * for the applicant, and for officials who handle registrations.
+     */
+    public function applicationFeeReceipt(ApplicationFeePayment $payment)
+    {
+        $user = Auth::user();
+        abort_unless($payment->isSuccessful(), 404);
+        abort_unless(
+            $payment->member->user_id === $user->id
+                || $user->can('approve_applications')
+                || $user->can('view_registration_fee_reports'),
+            403
+        );
+
+        return view('receipts.application-fee', [
+            'payment' => $payment->load(['member', 'recordedBy']),
+        ]);
     }
 
     public function repaymentReceipt(LoanRepaymentIntent $intent)

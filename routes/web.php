@@ -93,6 +93,7 @@ Route::post('webhooks/paystack', [PaystackController::class, 'webhook'])->name('
 Route::middleware('auth')->group(function () {
     Route::get('my/application', MyApplication::class)->name('my-application');
     Route::get('my/application/pay-fee', PayApplicationFee::class)->name('my-application.pay-fee');
+    Route::get('application-fee/{payment}/receipt', [\App\Http\Controllers\ReceiptController::class, 'applicationFeeReceipt'])->name('application-fee.receipt');
     Route::get('my/profile', MyProfile::class)->name('my-profile');
 
     Route::get('members', MemberDirectory::class)->name('members.index');

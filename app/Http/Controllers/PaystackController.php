@@ -40,10 +40,18 @@ class PaystackController extends Controller
         }
 
         $payment->applyVerification($data);
+        $payment->refresh();
 
-        return $payment->fresh()->isSuccessful()
-            ? redirect()->route('my-application')->with('status', 'Payment confirmed. Your application fee has been paid.')
-            : redirect()->route('my-application.pay-fee')->with('error', 'Payment was not successful. Please try again.');
+        if ($payment->isSuccessful()) {
+            return redirect()->route('my-application')->with('status', 'Payment confirmed. Your application fee has been paid.');
+        }
+
+        if ($payment->isPending()) {
+            return redirect()->route('my-application.pay-fee')
+                ->with('status', 'Your payment is still being processed by your bank. This can take a few minutes — use "Check payment" below. Please do not pay again.');
+        }
+
+        return redirect()->route('my-application.pay-fee')->with('error', 'Payment was not successful. Please try again.');
     }
 
     /**

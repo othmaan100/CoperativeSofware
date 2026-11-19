@@ -19,6 +19,14 @@ class ApplicationFeePayment extends Model
 
     public const SOURCE_LEGACY_IMPORT = 'legacy_import';
 
+    /** Paystack transaction statuses that mean "not finished yet", not "failed". */
+    public const PAYSTACK_PROCESSING_STATUSES = ['ongoing', 'pending', 'processing', 'queued'];
+
+    public function isPending(): bool
+    {
+        return $this->status === self::STATUS_PENDING;
+    }
+
     protected $fillable = [
         'member_id',
         'reference',
@@ -112,6 +120,19 @@ class ApplicationFeePayment extends Model
     public function applyVerification(array $data): void
     {
         if ($this->isSuccessful()) {
+            return;
+        }
+
+        // A bank transfer or USSD payment can take a few minutes to clear.
+        // Keep it pending rather than telling the applicant it failed; the
+        // webhook or a later "Check payment" settles it.
+        if (in_array($data['status'] ?? null, self::PAYSTACK_PROCESSING_STATUSES, true)) {
+            $this->update([
+                'status' => self::STATUS_PENDING,
+                'channel' => $data['channel'] ?? $this->channel,
+                'paystack_response' => $data,
+            ]);
+
             return;
         }
 

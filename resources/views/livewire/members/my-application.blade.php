@@ -48,6 +48,10 @@
                     @if ($member->application_fee_paid)
                         <div class="mt-4 bg-green-50 border border-green-200 text-green-800 rounded-md px-4 py-3 text-sm">
                             Application fee paid{{ $member->application_fee_paid_at ? ' on '.$member->application_fee_paid_at->format('d M Y') : '' }}.
+                            @php($feeReceipt = $member->applicationFeePayments()->where('status', 'success')->latest('paid_at')->first())
+                            @if ($feeReceipt)
+                                <a href="{{ route('application-fee.receipt', $feeReceipt) }}" target="_blank" class="underline font-medium">View / print receipt</a>
+                            @endif
                         </div>
                     @else
                         <div class="mt-4 bg-red-50 border border-red-200 text-red-800 rounded-md px-4 py-3 text-sm flex flex-wrap items-center justify-between gap-3">
