@@ -171,8 +171,8 @@ new class extends Component
                 </x-sidebar-link>
             @endcan
 
-            @canany(['view_all_members', 'approve_applications', 'review_change_requests', 'import_members'])
-                <x-sidebar-group label="Membership" :active="request()->routeIs(['members.*', 'treasurer.applications', 'secretary.change-requests', 'treasurer.member-imports.*'])">
+            @canany(['view_all_members', 'approve_applications', 'review_change_requests', 'import_members', 'manage_staff_accounts'])
+                <x-sidebar-group label="Membership" :active="request()->routeIs(['members.*', 'treasurer.applications', 'secretary.change-requests', 'treasurer.member-imports.*', 'staff-accounts'])">
                     @can('view_all_members')
                         <x-sidebar-link :href="route('members.index')" :active="request()->routeIs('members.*')" wire:navigate>
                             {{ __('Members') }}
@@ -194,6 +194,12 @@ new class extends Component
                     @can('import_members')
                         <x-sidebar-link :href="route('treasurer.member-imports.index')" :active="request()->routeIs('treasurer.member-imports.*')" wire:navigate>
                             {{ __('Member Import') }}
+                        </x-sidebar-link>
+                    @endcan
+
+                    @can('manage_staff_accounts')
+                        <x-sidebar-link :href="route('staff-accounts')" :active="request()->routeIs('staff-accounts')" wire:navigate>
+                            {{ __('Staff Accounts') }}
                         </x-sidebar-link>
                     @endcan
                 </x-sidebar-group>

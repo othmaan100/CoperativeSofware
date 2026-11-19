@@ -100,6 +100,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('treasurer/applications', PendingApplications::class)->name('treasurer.applications');
     Route::get('secretary/change-requests', ChangeRequests::class)->name('secretary.change-requests');
+    Route::get('staff-accounts', \App\Livewire\Members\StaffAccounts::class)->name('staff-accounts');
 
     // Module 2 — Savings & Withdrawals
     Route::get('my/savings', MySavings::class)->name('my-savings');

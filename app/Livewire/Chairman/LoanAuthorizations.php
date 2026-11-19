@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Chairman;
 
+use App\Livewire\Concerns\FiltersByDateRange;
 use App\Models\ActivityLog;
 use App\Models\Loan;
 use Illuminate\Support\Facades\Auth;
@@ -11,6 +12,7 @@ use Livewire\WithPagination;
 
 class LoanAuthorizations extends Component
 {
+    use FiltersByDateRange;
     use WithPagination;
 
     public string $tab = 'pending';
@@ -99,15 +101,26 @@ class LoanAuthorizations extends Component
     #[Layout('layouts.app')]
     public function render()
     {
-        $query = Loan::with(['member', 'product']);
+        $query = Loan::with(['member', 'product', 'guarantors.guarantorMember', 'treasurerReviewedBy', 'chairmanReviewedBy', 'disbursedBy']);
 
-        match ($this->tab) {
-            'history' => $query->whereIn('status', ['disbursed', 'active', 'overdue', 'defaulted', 'closed', 'chairman_authorized', 'chairman_declined']),
-            default => $query->where('status', 'treasurer_endorsed'),
-        };
+        if ($this->tab === 'history') {
+            // Ordered and filtered by when each loan was disbursed (or, if it never
+            // was, when the Chairman decided it), so imported loans sit at their real date.
+            $settledAt = 'COALESCE(disbursed_at, chairman_reviewed_at, treasurer_reviewed_at, applied_at)';
+            $query->whereIn('status', ['disbursed', 'active', 'overdue', 'defaulted', 'closed', 'chairman_authorized', 'chairman_declined']);
+            if ($from = $this->validDate($this->dateFrom)) {
+                $query->whereRaw("DATE({$settledAt}) >= ?", [$from]);
+            }
+            if ($to = $this->validDate($this->dateTo)) {
+                $query->whereRaw("DATE({$settledAt}) <= ?", [$to]);
+            }
+            $query->orderByRaw("{$settledAt} DESC");
+        } else {
+            $query->where('status', 'treasurer_endorsed')->latest('treasurer_reviewed_at');
+        }
 
         return view('livewire.chairman.loan-authorizations', [
-            'loans' => $query->latest('treasurer_reviewed_at')->paginate(15),
+            'loans' => $query->latest('id')->paginate(15),
             'activeLoan' => $this->activeId ? Loan::with(['member', 'product'])->find($this->activeId) : null,
         ]);
     }

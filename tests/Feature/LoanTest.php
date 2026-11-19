@@ -258,6 +258,19 @@ class LoanTest extends TestCase
             ->set('dateTo', '')
             ->assertViewHas('loans', fn ($l) => $l->total() === 0);
 
+        // The Chairman's History tab shows the same dates and supports the same filter.
+        Livewire::actingAs($chairman)
+            ->test(LoanAuthorizations::class)
+            ->call('setTab', 'history')
+            ->assertSeeText('Applied: '.$fmt($loan->applied_at))
+            ->assertSeeText('Endorsed: '.$fmt($loan->treasurer_reviewed_at).' — '.$treasurer->name)
+            ->assertSeeText('Authorized: '.$fmt($loan->chairman_reviewed_at).' — '.$chairman->name)
+            ->assertSeeText('Disbursed: '.$fmt($loan->disbursed_at))
+            ->set('dateTo', $loan->disbursed_at->copy()->subDay()->format('Y-m-d'))
+            ->assertViewHas('loans', fn ($l) => $l->total() === 0)
+            ->call('clearDates')
+            ->assertViewHas('loans', fn ($l) => $l->total() === 1);
+
         // Post a full repayment via the batch mechanism.
         $csv = "staff_id,loan_no,amount\nFCET-7001,{$loan->loan_no},110000\n";
         $file = UploadedFile::fake()->createWithContent('loan-repayments.csv', $csv);

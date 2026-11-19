@@ -123,6 +123,9 @@ class RolesAndPermissionsSeeder extends Seeder
 
             // Super Admin — system/user administration
             'manage_users',
+
+            // Secretary / Treasurer — staff login details (Staff ID, password reset)
+            'manage_staff_accounts',
         ];
 
         foreach ($permissions as $permission) {
@@ -197,6 +200,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'disburse_welfare_claim',
                 'post_welfare_levy',
                 'view_welfare_reports',
+                'manage_staff_accounts',
             ],
             'chairman' => [
                 'view_all_members',
@@ -238,6 +242,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'raise_complaint_on_behalf',
                 'handle_complaints',
                 'initiate_welfare_claim',
+                'manage_staff_accounts',
             ],
             'exco' => [
                 'view_all_members',

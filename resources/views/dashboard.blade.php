@@ -49,6 +49,13 @@
                         </a>
                     @endcan
 
+                    @can('manage_staff_accounts')
+                        <a href="{{ route('staff-accounts') }}" wire:navigate class="block p-4 rounded-lg border border-slate-200 dark:border-gray-700 hover:border-emerald-400 hover:shadow-md bg-white dark:bg-gray-800/50 transition">
+                            <h4 class="font-medium text-slate-900 dark:text-white">Staff Accounts</h4>
+                            <p class="text-sm text-gray-500">Correct a staff member's Staff ID or reset their password.</p>
+                        </a>
+                    @endcan
+
                     @can('view_own_savings')
                         <a href="{{ route('my-savings') }}" wire:navigate class="block p-4 rounded-lg border border-slate-200 dark:border-gray-700 hover:border-emerald-400 hover:shadow-md bg-white dark:bg-gray-800/50 transition">
                             <h4 class="font-medium text-slate-900 dark:text-white">My Savings</h4>
